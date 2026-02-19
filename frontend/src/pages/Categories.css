@@ -1,0 +1,9 @@
+.categories-page,
+.suppliers-page {
+  max-width: 1400px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}

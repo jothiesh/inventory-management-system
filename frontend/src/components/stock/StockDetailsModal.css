@@ -1,0 +1,73 @@
+.product-info-section {
+  background: #f9fafb;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 25px;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 15px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.info-label {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.info-value {
+  font-size: 16px;
+  color: #111827;
+  font-weight: 600;
+}
+
+.section {
+  margin-bottom: 30px;
+}
+
+.section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.lots-table,
+.movements-table {
+  width: 100%;
+  font-size: 13px;
+}
+
+.lots-table th,
+.movements-table th {
+  background: #f9fafb;
+  padding: 10px;
+  font-size: 12px;
+}
+
+.lots-table td,
+.movements-table td {
+  padding: 10px;
+}
+
+.empty-message {
+  text-align: center;
+  color: #9ca3af;
+  padding: 20px;
+}
+
+@media (max-width: 768px) {
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+}

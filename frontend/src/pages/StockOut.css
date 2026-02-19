@@ -1,0 +1,336 @@
+/* ============================================
+   STOCK OUT PAGE - MODERN DESIGN
+   ============================================ */
+
+/* Danger/Warning Gradient */
+.danger-gradient {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+}
+
+.stat-icon.danger {
+  color: #ef4444;
+}
+
+/* Stock Info Preview */
+.stock-info-preview {
+  padding: 0 24px 24px 24px;
+}
+
+.preview-header-danger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  color: white;
+  font-weight: 600;
+}
+
+.preview-header-danger:has(.success-icon) {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.preview-header-danger:has(.warning-icon) {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.warning-icon {
+  font-size: 20px;
+}
+
+.stock-highlight {
+  font-size: 18px !important;
+  font-weight: 700 !important;
+}
+
+.stock-highlight.success {
+  color: #10b981 !important;
+}
+
+.stock-highlight.danger {
+  color: #ef4444 !important;
+}
+
+/* FIFO Breakdown */
+.fifo-breakdown {
+  margin-top: 24px;
+  padding: 20px;
+  background: #f8fafc;
+  border-radius: 12px;
+}
+
+.fifo-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  color: #1e293b;
+}
+
+.fifo-icon {
+  color: #667eea;
+  font-size: 18px;
+}
+
+.fifo-header h4 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.fifo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fifo-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: white;
+  border-radius: 10px;
+  border: 2px solid #e2e8f0;
+  transition: all 0.2s;
+}
+
+.fifo-item:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.fifo-badge {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.fifo-details {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.fifo-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fifo-label {
+  font-size: 11px;
+  color: #64748b;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.fifo-value {
+  font-size: 13px;
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.fifo-value.price {
+  color: #10b981;
+}
+
+.fifo-value.date {
+  color: #64748b;
+  font-size: 12px;
+}
+
+/* Input Error State */
+.input-error {
+  border-color: #ef4444 !important;
+  background: #fef2f2 !important;
+}
+
+.input-error:focus {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1) !important;
+}
+
+/* Stock Status Alert */
+.stock-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.stock-status.success {
+  background: #d1fae5;
+  border: 1px solid #10b981;
+  color: #065f46;
+}
+
+.stock-status.error {
+  background: #fee2e2;
+  border: 1px solid #ef4444;
+  color: #991b1b;
+}
+
+/* Transaction Types */
+.transaction-types {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.transaction-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 12px;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: white;
+}
+
+.transaction-option input[type="radio"] {
+  display: none;
+}
+
+.transaction-option:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.transaction-option.active {
+  border-color: #667eea;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+}
+
+.option-icon {
+  font-size: 24px;
+}
+
+.option-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.transaction-option.active .option-text {
+  color: #667eea;
+}
+
+/* Danger Button */
+.btn-danger-modern {
+  flex: 1;
+  padding: 14px 24px;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-danger-modern:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
+.btn-danger-modern:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Modal Danger Variant */
+.modal-icon-modern.danger {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+.modal-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #fef3c7;
+  border: 1px solid #fde047;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  font-size: 13px;
+  color: #92400e;
+  font-weight: 500;
+}
+
+/* Info Number Danger Variant */
+.info-number.danger {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+/* Warning Card */
+.warning-card .card-header {
+  background: #fef3c7;
+  border-bottom-color: #fde047;
+}
+
+.warning-card .card-icon {
+  color: #f59e0b;
+}
+
+.warning-content {
+  padding: 20px 24px;
+}
+
+.warning-content p {
+  font-size: 15px;
+  color: #1e293b;
+  margin-bottom: 12px;
+}
+
+.warning-content ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.warning-content li {
+  padding: 8px 0;
+  padding-left: 24px;
+  position: relative;
+  font-size: 14px;
+  color: #475569;
+}
+
+.warning-content li:before {
+  content: "⚡";
+  position: absolute;
+  left: 0;
+  font-size: 16px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .fifo-details {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  
+  .transaction-types {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
