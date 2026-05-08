@@ -1,0 +1,31 @@
+# ========== Stage 1: Build ==========
+FROM maven:3.9-eclipse-temurin-17 AS builder
+
+WORKDIR /build
+COPY backend/pom.xml .
+# Download dependencies first (cached layer)
+RUN mvn dependency:go-offline -B
+
+COPY backend/src ./src
+RUN mvn clean package -DskipTests -B
+
+# ========== Stage 2: Run ==========
+FROM eclipse-temurin:17-jre-alpine
+
+RUN apk add --no-cache curl dumb-init
+
+RUN addgroup -S appuser && adduser -S appuser -G appuser
+
+WORKDIR /app
+
+COPY --from=builder --chown=appuser:appuser /build/target/*.jar app.jar
+
+USER appuser
+
+EXPOSE 3001
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["java", "-Xms512m", "-Xmx1536m", "-XX:+UseG1GC", \
+     "-XX:+HeapDumpOnOutOfMemoryError", \
+     "-Djava.security.egd=file:/dev/./urandom", \
+     "-jar", "app.jar"]

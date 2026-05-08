@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # ========== DATABASE ==========
+  # Note: Kept the local database container just in case you need it, 
+  # but updated the credentials to match your application.properties 'stock' DB.
+  store-db:
+    image: mysql:8.0
+    container_name: store-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-StoreRoot@2026}
+      MYSQL_DATABASE: ${DB_NAME:-stock}
+      MYSQL_USER: ${DB_USER:-admin}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-Thinture24}
+    ports:
+      - "3307:3306"
+    volumes:
+      - store-db-data:/var/lib/mysql
+      - ./init-db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-StoreRoot@2026}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - store-network
+
+  # ========== BACKEND (Spring Boot) ==========
+  store-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: store-backend
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SERVER_PORT=3001
+      
+      # --- AWS RDS DATABASE CONFIGURATION ---
+      - SPRING_DATASOURCE_URL=jdbc:mysql://thinturedb.c3oqsa2ui3r2.ap-south-1.rds.amazonaws.com:3306/stock?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=UTF-8&rewriteBatchedStatements=true&cachePrepStmts=true&useServerPrepStmts=true
+      - SPRING_DATASOURCE_USERNAME=admin
+      - SPRING_DATASOURCE_PASSWORD=Thinture24
+      - SPRING_DATASOURCE_DRIVER_CLASS_NAME=com.mysql.cj.jdbc.Driver
+      
+      # --- JPA / HIBERNATE ---
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      - SPRING_JPA_SHOW_SQL=false
+      
+      # --- HIKARI CONNECTION POOL ---
+      - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=20
+      
+      # --- JWT CONFIGURATION ---
+      - JWT_SECRET=YourDefaultDevSecretKeyThatIsAtLeast256BitsLongForHS256Algorithm123456789
+      - JWT_EXPIRATION=86400000
+
+    # Removed the depends_on: store-db block since you are connecting directly to AWS RDS.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    mem_limit: 2g
+    cpus: 1.5
+    networks:
+      - store-network
+
+  # ========== FRONTEND (React/Vite) ==========
+  store-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: store-frontend
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      store-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - store-network
+
+volumes:
+  store-db-data:
+    driver: local
+
+networks:
+  store-network:
+    driver: bridge

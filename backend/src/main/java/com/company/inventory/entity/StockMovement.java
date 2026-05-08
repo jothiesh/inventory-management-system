@@ -1,11 +1,10 @@
 package com.company.inventory.entity;
-
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.hibernate.annotations.CreationTimestamp;
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -22,10 +21,12 @@ public class StockMovement {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lot_id", nullable = false)
+    @JsonIgnore  // ✅ FIX
     private Lot lot;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id", nullable = false)
+    @JsonIgnore  // ✅ FIX
     private Product product;
 
     @Enumerated(EnumType.STRING)
@@ -41,18 +42,22 @@ public class StockMovement {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "from_rack_id")
+    @JsonIgnore  // ✅ FIX
     private Rack fromRack;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "from_box_id")
+    @JsonIgnore  // ✅ FIX
     private Box fromBox;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "to_rack_id")
+    @JsonIgnore  // ✅ FIX
     private Rack toRack;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "to_box_id")
+    @JsonIgnore  // ✅ FIX
     private Box toBox;
 
     @Column(length = 100)
@@ -63,23 +68,13 @@ public class StockMovement {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
+    @JsonIgnore  // ✅ FIX
     private User createdBy;
 
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;
 
-    public enum MovementType {
-        IN,
-        OUT
-    }
-
-    public enum TransactionType {
-        Purchase,
-        Sale,
-        Production,
-        Damage,
-        Scrap,
-        Transfer
-    }
+    public enum MovementType { IN, OUT }
+    public enum TransactionType { Purchase, Sale, Production, Damage, Scrap, Transfer }
 }

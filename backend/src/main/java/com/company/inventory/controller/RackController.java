@@ -1,5 +1,6 @@
 package com.company.inventory.controller;
 
+import com.company.inventory.dto.request.RackRequest;
 import com.company.inventory.dto.response.ApiResponse;
 import com.company.inventory.entity.Rack;
 import com.company.inventory.entity.User;
@@ -50,13 +51,12 @@ public class RackController {
     @PostMapping
     @Operation(summary = "Create rack", description = "Create a new rack")
     public ResponseEntity<ApiResponse<Rack>> createRack(
-            @RequestParam String rackNumber,
-            @RequestParam String rackName,
-            @RequestParam(required = false) String location,
-            @RequestParam(required = false) Integer capacity,
+            @RequestBody RackRequest req,
             Authentication authentication) {
         User currentUser = authService.getCurrentUser(authentication.getName());
-        Rack rack = rackService.createRack(rackNumber, rackName, location, capacity, currentUser);
+        Rack rack = rackService.createRack(
+                req.rackNumber(), req.rackName(), req.location(), req.capacity(), currentUser
+        );
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Rack created successfully", rack));
     }
@@ -65,11 +65,10 @@ public class RackController {
     @Operation(summary = "Update rack", description = "Update an existing rack")
     public ResponseEntity<ApiResponse<Rack>> updateRack(
             @PathVariable Long id,
-            @RequestParam String rackNumber,
-            @RequestParam String rackName,
-            @RequestParam(required = false) String location,
-            @RequestParam(required = false) Integer capacity) {
-        Rack rack = rackService.updateRack(id, rackNumber, rackName, location, capacity);
+            @RequestBody RackRequest req) {
+        Rack rack = rackService.updateRack(
+                id, req.rackNumber(), req.rackName(), req.location(), req.capacity()
+        );
         return ResponseEntity.ok(ApiResponse.success("Rack updated successfully", rack));
     }
 
@@ -78,13 +77,5 @@ public class RackController {
     public ResponseEntity<ApiResponse<Void>> deleteRack(@PathVariable Long id) {
         rackService.deleteRack(id);
         return ResponseEntity.ok(ApiResponse.success("Rack deleted successfully", null));
-    }
-
-    @PostMapping("/init-defaults")
-    @Operation(summary = "Initialize default racks", description = "Create default racks")
-    public ResponseEntity<ApiResponse<String>> initializeDefaultRacks(Authentication authentication) {
-        User currentUser = authService.getCurrentUser(authentication.getName());
-        rackService.initializeDefaultRacks(currentUser);
-        return ResponseEntity.ok(ApiResponse.success("Default racks initialized", null));
     }
 }

@@ -1,552 +1,457 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { stockApi } from '../api/stockApi';
-import { productApi } from '../api/productApi';
 import { toast } from 'react-toastify';
-import { 
+import {
   FiTrendingDown, FiInfo, FiAlertTriangle, FiCheckCircle,
-  FiPackage, FiLayers, FiClock, FiDollarSign, FiBox
+  FiLayers, FiDollarSign, FiBox,
+  FiSearch, FiX, FiGrid, FiList, FiCheck, FiCpu, FiMapPin,
+  FiBarChart2, FiZap, FiArrowRight, FiShield, FiRefreshCw,
+  FiTag, FiHash, FiFilter, FiActivity, FiAlignLeft
 } from 'react-icons/fi';
 import './StockOut.css';
 
 const StockOut = () => {
   const [formData, setFormData] = useState({
-    productId: '',
-    quantity: '',
-    transactionType: 'Production',
-    referenceNumber: '',
-    notes: '',
+    productId: '', quantity: '', transactionType: 'Production',
+    referenceNumber: '', notes: '',
   });
-
   const [products, setProducts] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [currentStock, setCurrentStock] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [insufficientStock, setInsufficientStock] = useState(false);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState('grid');
+  const [activeCategory, setActiveCategory] = useState('all');
+  const [step, setStep] = useState(1);
+
+  useEffect(() => { loadProducts(); }, []);
 
   useEffect(() => {
-    loadProducts();
-  }, []);
-
-  useEffect(() => {
-    if (formData.productId) {
-      loadProductStock(formData.productId);
-    } else {
-      setCurrentStock(null);
-      setSelectedProduct(null);
-    }
+    if (formData.productId) loadProductStock(formData.productId);
+    else { setCurrentStock(null); setSelectedProduct(null); }
   }, [formData.productId]);
 
-  // Check if quantity exceeds available stock
   useEffect(() => {
-    if (currentStock && formData.quantity) {
-      const requested = parseFloat(formData.quantity);
-      const available = parseFloat(currentStock.totalStock || 0);
-      setInsufficientStock(requested > available);
-    } else {
-      setInsufficientStock(false);
-    }
+    if (currentStock && formData.quantity)
+      setInsufficientStock(parseFloat(formData.quantity) > parseFloat(currentStock.totalStock || 0));
+    else setInsufficientStock(false);
   }, [formData.quantity, currentStock]);
 
+  const categories = useMemo(() => {
+    const s = new Set();
+    // ✅ use categoryName directly from StockedProductResponse
+    products.forEach(p => { if (p.categoryName) s.add(p.categoryName); });
+    return ['all', ...Array.from(s)];
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    let f = products;
+    // ✅ filter using flat fields from StockedProductResponse
+    if (activeCategory !== 'all') f = f.filter(p => p.categoryName === activeCategory);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      f = f.filter(p => [p.partNumber, p.description, p.packageType,
+        p.categoryName, p.supplierName, p.rackName, p.boxLabel]
+        .filter(Boolean).some(v => v.toLowerCase().includes(q)));
+    }
+    return f;
+  }, [products, searchQuery, activeCategory]);
+
+  // ✅ Load only stocked products (stock > 0) using getStockedProducts
   const loadProducts = async () => {
     try {
-      const response = await productApi.getActive();
-      console.log('Products loaded:', response.data); // Debug log
-      setProducts(response.data.data || []);
-    } catch (error) {
-      toast.error('Failed to load products');
-      console.error('Load products error:', error);
-      setProducts([]);
-    }
+      setLoadingProducts(true);
+      const res = await stockApi.getStockedProducts();
+      setProducts(res.data.data || []);
+    } catch { toast.error('Failed to load products'); setProducts([]); }
+    finally { setLoadingProducts(false); }
   };
 
   const loadProductStock = async (productId) => {
     try {
-      const response = await stockApi.getCurrentStock(productId);
-      const stockData = response.data.data;
-      
-      setCurrentStock(stockData);
-      
-      const product = products.find(p => p.productId === parseInt(productId));
-      setSelectedProduct(product);
-
-      const totalStock = parseFloat(stockData?.totalStock || 0);
-      if (!stockData || totalStock <= 0) {
-        toast.warning('No stock available for this product!');
-      }
-    } catch (error) {
-      console.error('Failed to load stock:', error);
-      setCurrentStock(null);
-      toast.error('Failed to load stock information');
-    }
+      const res = await stockApi.getCurrentStock(productId);
+      const sd = res.data.data;
+      setCurrentStock(sd);
+      setSelectedProduct(products.find(p => p.productId === parseInt(productId)));
+      if (!sd || parseFloat(sd?.totalStock || 0) <= 0) toast.warning('No stock available!');
+    } catch { setCurrentStock(null); toast.error('Failed to load stock'); }
   };
 
-  const handleProductChange = (e) => {
-    const productId = e.target.value;
-    setFormData({
-      ...formData,
-      productId,
-      quantity: '',
-    });
+  const handleProductSelect = (product) => {
+    if (selectedProduct?.productId === product.productId) { resetProductSelection(); return; }
+    setFormData({ ...formData, productId: product.productId, quantity: '' });
+    setStep(2);
+  };
+
+  const resetProductSelection = () => {
+    setFormData({ ...formData, productId: '', quantity: '' });
+    setSelectedProduct(null); setCurrentStock(null); setInsufficientStock(false); setStep(1);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    const totalStock = parseFloat(currentStock?.totalStock || 0);
-    
-    if (!currentStock || totalStock <= 0) {
-      toast.error('No stock available for this product!');
-      return;
-    }
-
-    if (parseFloat(formData.quantity) > totalStock) {
-      toast.error(`Insufficient stock! Available: ${totalStock}`);
-      return;
-    }
-
-    if (parseFloat(formData.quantity) <= 0) {
-      toast.error('Quantity must be greater than 0');
-      return;
-    }
-
+    const total = parseFloat(currentStock?.totalStock || 0);
+    if (!currentStock || total <= 0) { toast.error('No stock available!'); return; }
+    if (parseFloat(formData.quantity) > total) { toast.error(`Insufficient! Available: ${total}`); return; }
+    if (parseFloat(formData.quantity) <= 0) { toast.error('Quantity must be > 0'); return; }
     setShowConfirmation(true);
   };
 
   const confirmSubmit = async () => {
-    setLoading(true);
-    setShowConfirmation(false);
-
+    setLoading(true); setShowConfirmation(false);
     try {
-      const payload = {
-        productId: parseInt(formData.productId),
-        quantity: parseFloat(formData.quantity),
-        transactionType: formData.transactionType,
-        referenceNumber: formData.referenceNumber,
-        notes: formData.notes,
-      };
-
-      await stockApi.stockOut(payload);
-      
-      toast.success('🎉 Stock issued successfully!', {
-        position: 'top-center',
-        autoClose: 3000,
+      await stockApi.stockOut({
+        productId: parseInt(formData.productId), quantity: parseFloat(formData.quantity),
+        transactionType: formData.transactionType, referenceNumber: formData.referenceNumber, notes: formData.notes,
       });
-      
+      toast.success('Stock issued successfully!', { position: 'top-center', autoClose: 3000 });
       resetForm();
-      
-    } catch (error) {
-      const errorMsg = error.response?.data?.message || 'Failed to issue stock';
-      toast.error(errorMsg);
-      console.error('Stock out error:', error);
-    } finally {
-      setLoading(false);
-    }
+      loadProducts(); // ✅ refresh list after stock out
+    } catch (e) { toast.error(e.response?.data?.message || 'Failed to issue stock'); }
+    finally { setLoading(false); }
   };
 
   const resetForm = () => {
-    setFormData({
-      productId: '',
-      quantity: '',
-      transactionType: 'Production',
-      referenceNumber: '',
-      notes: '',
-    });
-    setSelectedProduct(null);
-    setCurrentStock(null);
-    setInsufficientStock(false);
+    setFormData({ productId: '', quantity: '', transactionType: 'Production', referenceNumber: '', notes: '' });
+    setSelectedProduct(null); setCurrentStock(null); setInsufficientStock(false);
+    setSearchQuery(''); setActiveCategory('all'); setStep(1);
   };
 
-  const quickFillQuantity = (percentage) => {
-    if (currentStock && currentStock.totalStock) {
-      const available = parseFloat(currentStock.totalStock);
-      const qty = (available * percentage / 100).toFixed(2);
-      setFormData({ ...formData, quantity: qty });
-    }
+  const quickFill = (pct) => {
+    if (currentStock?.totalStock)
+      setFormData({ ...formData, quantity: (parseFloat(currentStock.totalStock) * pct / 100).toFixed(2) });
   };
 
-  const getTransactionIcon = (type) => {
-    switch(type) {
-      case 'Sale': return '💰';
-      case 'Production': return '🏭';
-      case 'Damage': return '⚠️';
-      case 'Scrap': return '🗑️';
-      default: return '📦';
-    }
+  const getTxCfg = (type) => ({
+    Production: { icon: '🏭', color: '#4f46e5', bg: '#eef2ff', border: '#c7d2fe' },
+    Sale:       { icon: '💰', color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
+    Damage:     { icon: '⚠️', color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+    Scrap:      { icon: '🗑️', color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+  }[type] || { icon: '📦', color: '#4f46e5', bg: '#eef2ff', border: '#c7d2fe' });
+
+  const hl = (text, q) => {
+    if (!q.trim() || !text) return text;
+    const rx = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    return text.split(rx).map((p, i) => rx.test(p) ? <mark key={i} className="hl">{p}</mark> : p);
   };
 
-  // Safe helper functions
-  const getCategoryName = (product) => {
-    return product?.category?.categoryName || 'Uncategorized';
-  };
-
-  const getPackageDisplay = (product) => {
-    return product?.packageType ? ` (${product.packageType})` : '';
-  };
+  const stockPct = currentStock && formData.quantity
+    ? Math.min(100, (parseFloat(formData.quantity) / parseFloat(currentStock.totalStock || 1)) * 100) : 0;
+  const remaining = currentStock && formData.quantity
+    ? Math.max(0, parseFloat(currentStock.totalStock || 0) - parseFloat(formData.quantity || 0)) : null;
 
   return (
-    <div className="stock-out-page">
-      {/* Page Header */}
-      <div className="page-header-modern">
-        <div className="header-content">
-          <div className="header-icon danger-gradient">
-            <FiTrendingDown size={32} />
-          </div>
+    <div className="so">
+
+      {/* HEADER */}
+      <header className="so-hdr">
+        <div className="so-hdr-l">
+          <div className="so-hdr-ico"><FiTrendingDown /></div>
           <div>
-            <h1>Stock OUT</h1>
-            <p>Issue inventory for sale, production, or other purposes</p>
+            <h1 className="so-h1">Stock <span>OUT</span></h1>
+            <p className="so-sub">Issue inventory · FIFO auto-applied</p>
           </div>
         </div>
-        {currentStock && (
-          <div className="header-stats">
-            <div className="stat-card">
-              <FiPackage className="stat-icon danger" />
+        <div className="so-hdr-r">
+          {currentStock && (
+            <div className="so-avail-pill">
+              <FiBarChart2 />
               <div>
-                <span className="stat-label">Available Stock</span>
-                <span className="stat-value">{parseFloat(currentStock.totalStock || 0).toFixed(2)}</span>
+                <small>Available</small>
+                <strong>{parseFloat(currentStock.totalStock || 0).toFixed(2)}</strong>
               </div>
             </div>
-          </div>
-        )}
+          )}
+          <button className="so-icon-btn" onClick={loadProducts}><FiRefreshCw /></button>
+        </div>
+      </header>
+
+      {/* STEPPER */}
+      <div className="so-stepper">
+        {[['Select Product',1],['Issue Details',2],['Confirm',3]].map(([lbl,n]) => (
+          <React.Fragment key={n}>
+            <div className={`so-step ${step>=n?'active':''} ${step>n?'done':''}`}>
+              <div className="so-step-dot">{step>n?<FiCheck size={12}/>:n}</div>
+              <span>{lbl}</span>
+            </div>
+            {n<3 && <div className={`so-step-line ${step>n?'done':''}`} />}
+          </React.Fragment>
+        ))}
       </div>
 
-      <div className="stock-out-layout">
-        {/* Main Form Section */}
-        <div className="main-section">
-          {/* Product Selection Card */}
-          <div className="card-modern">
-            <div className="card-header">
-              <FiBox className="card-icon" />
-              <h3>Select Product</h3>
-            </div>
-            
-            <div className="product-selector">
-              <select
-                value={formData.productId}
-                onChange={handleProductChange}
-                className="select-modern"
-              >
-                <option value="">🔍 Search and select a product...</option>
-                {products && products.length > 0 ? (
-                  products.map((product) => (
-                    <option key={product.productId} value={product.productId}>
-                      {product.partNumber || 'N/A'} - {product.description || 'No description'}
-                      {getPackageDisplay(product)}
-                      {' | '}
-                      {getCategoryName(product)}
-                    </option>
-                  ))
-                ) : (
-                  <option disabled>No products available</option>
-                )}
-              </select>
-            </div>
+      {/* MAIN */}
+      <div className="so-body">
 
-            {/* Stock Information Card */}
-            {selectedProduct && currentStock && (
-              <div className="stock-info-preview">
-                <div className="preview-header-danger">
-                  {parseFloat(currentStock.totalStock || 0) > 0 ? (
-                    <>
-                      <FiCheckCircle className="success-icon" />
-                      <span>Stock Available</span>
-                    </>
-                  ) : (
-                    <>
-                      <FiAlertTriangle className="warning-icon" />
-                      <span>Out of Stock</span>
-                    </>
-                  )}
+        {/* LEFT */}
+        <section className="so-card-box">
+          <div className="so-box-hd">
+            <div className="so-box-title"><FiBox />{selectedProduct?'Selected Product':'Choose a Product'}</div>
+            {selectedProduct && <button className="so-chg-btn" onClick={resetProductSelection}><FiX size={13}/>Change</button>}
+          </div>
+
+          {!selectedProduct ? (
+            <div className="so-search-zone">
+              <div className="so-search-row">
+                <div className="so-search-wrap">
+                  <FiSearch className="so-s-ico" />
+                  <input className="so-s-inp" type="text" value={searchQuery}
+                    onChange={e=>setSearchQuery(e.target.value)}
+                    placeholder="Search part number, description, category…" autoFocus />
+                  {searchQuery && <button className="so-s-clr" onClick={()=>setSearchQuery('')}><FiX/></button>}
                 </div>
-
-                <div className="preview-details">
-                  <div className="preview-row">
-                    <span className="preview-label">Part Number:</span>
-                    <span className="preview-value">{selectedProduct.partNumber || 'N/A'}</span>
-                  </div>
-                  <div className="preview-row">
-                    <span className="preview-label">Description:</span>
-                    <span className="preview-value">{selectedProduct.description || 'N/A'}</span>
-                  </div>
-                  <div className="preview-row">
-                    <span className="preview-label">Category:</span>
-                    <span className="preview-value badge-category">
-                      {getCategoryName(selectedProduct)}
-                    </span>
-                  </div>
-                  <div className="preview-row">
-                    <span className="preview-label">Available Stock:</span>
-                    <span className={`preview-value stock-highlight ${parseFloat(currentStock.totalStock || 0) > 0 ? 'success' : 'danger'}`}>
-                      {parseFloat(currentStock.totalStock || 0).toFixed(2)} units
-                    </span>
-                  </div>
-                  <div className="preview-row">
-                    <span className="preview-label">Min Stock Level:</span>
-                    <span className="preview-value">
-                      {selectedProduct.minStockLevel || 'Not set'}
-                    </span>
-                  </div>
-                  <div className="preview-row">
-                    <span className="preview-label">Active Lots:</span>
-                    <span className="preview-value">{currentStock.lots?.length || 0}</span>
-                  </div>
+                <div className="so-vmode">
+                  <button className={`so-vm-btn ${viewMode==='grid'?'on':''}`} onClick={()=>setViewMode('grid')}><FiGrid/></button>
+                  <button className={`so-vm-btn ${viewMode==='list'?'on':''}`} onClick={()=>setViewMode('list')}><FiList/></button>
                 </div>
+              </div>
 
-                {/* FIFO Lots Breakdown */}
-                {currentStock.lots && currentStock.lots.length > 0 && (
-                  <div className="fifo-breakdown">
-                    <div className="fifo-header">
-                      <FiLayers className="fifo-icon" />
-                      <h4>Stock Breakdown (FIFO Order)</h4>
+              <div className="so-chips">
+                {categories.map(c=>(
+                  <button key={c} className={`so-chip ${activeCategory===c?'on':''}`} onClick={()=>setActiveCategory(c)}>
+                    {c==='all'?'All Products':c}
+                    {/* ✅ count using categoryName */}
+                    {c!=='all'&&<span>{products.filter(p=>p.categoryName===c).length}</span>}
+                  </button>
+                ))}
+              </div>
+
+              <div className="so-count">
+                <FiFilter size={12}/><b>{filteredProducts.length}</b> product{filteredProducts.length!==1?'s':''}
+                {searchQuery&&<span>for "<b>{searchQuery}</b>"</span>}
+              </div>
+
+              {loadingProducts ? (
+                <div className={`so-pg ${viewMode==='list'?'lv':''}`}>
+                  {[1,2,3,4,5,6].map(i=><div key={i} className="so-skel"/>)}
+                </div>
+              ) : filteredProducts.length > 0 ? (
+                <div className={`so-pg ${viewMode==='list'?'lv':''}`}>
+                  {filteredProducts.map(p=>(
+                    <div key={p.productId} className="so-pc" onClick={()=>handleProductSelect(p)}>
+                      <div className="so-pc-top">
+                        <div className="so-pc-pn"><FiCpu className="so-cpu-ico"/>{hl(p.partNumber,searchQuery)}</div>
+                        {/* ✅ use categoryName directly */}
+                        {p.categoryName&&<span className="so-pc-cat-badge">{hl(p.categoryName,searchQuery)}</span>}
+                      </div>
+                      <p className="so-pc-desc">{hl(p.description,searchQuery)}</p>
+                      <div className="so-pc-tags">
+                        {p.packageType&&<span className="so-ptag"><FiLayers size={10}/>{hl(p.packageType,searchQuery)}</span>}
+                        {p.unitPrice!=null&&<span className="so-ptag price"><FiDollarSign size={10}/>₹{p.unitPrice.toFixed(2)}</span>}
+                      </div>
+                      {/* ✅ use rackName/boxLabel directly */}
+                      <div className="so-pc-loc"><FiMapPin size={11}/>{p.rackName||'—'} / {p.boxLabel||'—'}</div>
+                      {/* ✅ show current stock qty on card */}
+                      <div className="so-pc-stock">
+                        <FiBarChart2 size={11}/>
+                        <span className={p.stockStatus==='LOW_STOCK'?'low':'ok'}>
+                          {p.totalStock} units {p.stockStatus==='LOW_STOCK'&&<span className="low-badge">Low</span>}
+                        </span>
+                      </div>
+                      <span className="so-pc-arr"><FiArrowRight/></span>
                     </div>
-                    <div className="fifo-list">
-                      {currentStock.lots.map((lot, index) => (
-                        <div key={lot.lotId} className="fifo-item">
-                          <div className="fifo-badge">#{index + 1}</div>
-                          <div className="fifo-details">
-                            <div className="fifo-row">
-                              <span className="fifo-label">Lot:</span>
-                              <span className="fifo-value">{lot.lotNumber || 'N/A'}</span>
-                            </div>
-                            <div className="fifo-row">
-                              <span className="fifo-label">Qty:</span>
-                              <span className="fifo-value">{parseFloat(lot.remainingQuantity || 0).toFixed(2)}</span>
-                            </div>
-                            <div className="fifo-row">
-                              <span className="fifo-label">Price:</span>
-                              <span className="fifo-value price">₹{parseFloat(lot.purchasePrice || 0).toFixed(2)}</span>
-                            </div>
-                            <div className="fifo-row">
-                              <span className="fifo-label">Date:</span>
-                              <span className="fifo-value date">
-                                {lot.purchaseDate ? new Date(lot.purchaseDate).toLocaleDateString() : 'N/A'}
-                              </span>
-                            </div>
-                          </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="so-empty">
+                  <div className="so-empty-ico"><FiSearch/></div>
+                  <h4>No stocked products found</h4>
+                  <p>{searchQuery ? 'Try different keywords' : 'No products with stock available'}</p>
+                  {searchQuery&&<button className="so-empty-btn" onClick={()=>{setSearchQuery('');setActiveCategory('all');}}>Clear Filters</button>}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="so-prod-detail">
+              <div className={`so-status-bar ${parseFloat(currentStock?.totalStock||0)>0?'ok':'bad'}`}>
+                {parseFloat(currentStock?.totalStock||0)>0
+                  ?<><FiCheckCircle/><span>Stock Available</span></>
+                  :<><FiAlertTriangle/><span>Out of Stock</span></>
+                }
+                <span className="so-qty-badge">{parseFloat(currentStock?.totalStock||0).toFixed(2)} units</span>
+              </div>
+
+              <div className="so-dg">
+                <div className="so-di"><span className="so-dk"><FiHash size={11}/> Part No.</span><span className="so-dv mono">{selectedProduct.partNumber}</span></div>
+                {/* ✅ use categoryName directly */}
+                <div className="so-di"><span className="so-dk"><FiTag size={11}/> Category</span><span className="so-dv"><span className="cat-badge">{selectedProduct.categoryName||'—'}</span></span></div>
+                <div className="so-di full"><span className="so-dk"><FiAlignLeft size={11}/> Description</span><span className="so-dv">{selectedProduct.description}</span></div>
+                <div className="so-di"><span className="so-dk"><FiBarChart2 size={11}/> Stock</span><span className={`so-dv big ${parseFloat(currentStock?.totalStock||0)>0?'green':'red'}`}>{parseFloat(currentStock?.totalStock||0).toFixed(2)}</span></div>
+                <div className="so-di"><span className="so-dk"><FiShield size={11}/> Min Level</span><span className="so-dv">{selectedProduct.minStockLevel||'Not set'}</span></div>
+                <div className="so-di"><span className="so-dk"><FiLayers size={11}/> Lots</span><span className="so-dv">{currentStock?.lots?.length||0}</span></div>
+                {/* ✅ use rackName/boxLabel directly */}
+                <div className="so-di full"><span className="so-dk"><FiMapPin size={11}/> Location</span><span className="so-dv">{selectedProduct.rackName||'—'} / {selectedProduct.boxLabel||'—'}</span></div>
+              </div>
+
+              {currentStock?.lots?.length>0&&(
+                <div className="so-lots-box">
+                  <div className="so-lots-hd">
+                    <FiLayers className="lots-ico"/><span>FIFO Lot Breakdown</span>
+                    <span className="lots-badge">{currentStock.lots.length} lots</span>
+                  </div>
+                  <div className="so-lots-list">
+                    {currentStock.lots.map((lot,idx)=>(
+                      <div key={lot.lotId} className="so-lot">
+                        <div className="so-lot-n">#{idx+1}</div>
+                        <div className="so-lot-info">
+                          <div className="so-lot-row"><span className="lk">Lot</span><span className="lv mono">{lot.lotNumber||'N/A'}</span></div>
+                          <div className="so-lot-row"><span className="lk">Qty</span><span className="lv bold">{parseFloat(lot.remainingQuantity||0).toFixed(2)}</span></div>
+                          <div className="so-lot-row"><span className="lk">Price</span><span className="lv green">₹{parseFloat(lot.purchasePrice||0).toFixed(2)}</span></div>
+                          <div className="so-lot-row"><span className="lk">Date</span><span className="lv muted">{lot.purchaseDate?new Date(lot.purchaseDate).toLocaleDateString():'N/A'}</span></div>
                         </div>
-                      ))}
-                    </div>
+                        <div className="so-lot-bar"><div className="so-lot-bar-fill" style={{width:`${Math.min(100,(parseFloat(lot.remainingQuantity||0)/parseFloat(currentStock.totalStock||1))*100)}%`}}/></div>
+                      </div>
+                    ))}
                   </div>
-                )}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* RIGHT */}
+        <div className="so-right">
+          {selectedProduct&&currentStock&&parseFloat(currentStock.totalStock||0)>0&&(
+            <section className="so-card-box">
+              <div className="so-box-hd">
+                <div className="so-box-title"><FiZap className="red-ico"/>Issue Details</div>
+              </div>
+              <form onSubmit={handleSubmit} className="so-form">
+
+                <div className="so-field">
+                  <label className="so-lbl"><FiBox className="lico"/>Quantity to Issue<span className="req">*</span></label>
+                  <input type="number" step="0.01" value={formData.quantity}
+                    onChange={e=>setFormData({...formData,quantity:e.target.value})}
+                    placeholder="0.00" className={`so-inp big ${insufficientStock?'err':''}`}
+                    required max={currentStock.totalStock}/>
+                  <div className="so-qbtns">
+                    {[25,50,75,100].map(p=>(
+                      <button key={p} type="button" className="so-qbtn" onClick={()=>quickFill(p)}>
+                        {p===100?'All':`${p}%`}
+                      </button>
+                    ))}
+                  </div>
+                  {formData.quantity&&(
+                    <div className="so-meter">
+                      <div className="so-mbar"><div className={`so-mfill ${insufficientStock?'err':''}`} style={{width:`${Math.min(100,stockPct)}%`}}/></div>
+                      <div className="so-mlbls">
+                        <span className={insufficientStock?'red':'green'}>
+                          {insufficientStock?`⚠ Exceeds available (${parseFloat(currentStock.totalStock).toFixed(2)})`:`✓ ${stockPct.toFixed(1)}% of stock`}
+                        </span>
+                        {remaining!==null&&!insufficientStock&&<span className="muted">Remaining: {remaining.toFixed(2)}</span>}
+                      </div>
+                    </div>
+                  )}
+                  {!formData.quantity&&<p className="so-hint"><FiInfo size={12}/>Max: {parseFloat(currentStock.totalStock).toFixed(2)} units</p>}
+                </div>
+
+                <div className="so-field">
+                  <label className="so-lbl"><FiActivity className="lico"/>Transaction Type<span className="req">*</span></label>
+                  <div className="so-tx-grid">
+                    {['Production','Sale','Damage','Scrap'].map(type=>{
+                      const cfg=getTxCfg(type); const on=formData.transactionType===type;
+                      return(
+                        <label key={type} className={`so-tx-card ${on?'on':''}`}
+                          style={on?{background:cfg.bg,borderColor:cfg.border}:{}}>
+                          <input type="radio" name="transactionType" value={type}
+                            checked={on} onChange={e=>setFormData({...formData,transactionType:e.target.value})}/>
+                          <span className="tx-ico">{cfg.icon}</span>
+                          <span className="tx-lbl" style={on?{color:cfg.color}:{}}>{type}</span>
+                          {on&&<span className="tx-chk" style={{background:cfg.color}}><FiCheck size={9}/></span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="so-field">
+                  <label className="so-lbl"><FiHash className="lico"/>Work Order / Reference<span className="opt">optional</span></label>
+                  <input type="text" value={formData.referenceNumber}
+                    onChange={e=>setFormData({...formData,referenceNumber:e.target.value})}
+                    placeholder="e.g. WO-001, SO-123" className="so-inp"/>
+                </div>
+
+                <div className="so-field">
+                  <label className="so-lbl"><FiAlignLeft className="lico"/>Notes<span className="opt">optional</span></label>
+                  <textarea value={formData.notes}
+                    onChange={e=>setFormData({...formData,notes:e.target.value})}
+                    placeholder="Additional context…" className="so-textarea" rows={3}/>
+                </div>
+
+                <div className="so-form-btns">
+                  <button type="button" className="so-ghost-btn" onClick={resetForm}>Cancel</button>
+                  <button type="submit" className="so-issue-btn" disabled={loading||insufficientStock||!formData.quantity}>
+                    {loading?<><FiRefreshCw className="spin"/>Processing…</>:<><FiTrendingDown/>Issue Stock</>}
+                  </button>
+                </div>
+              </form>
+            </section>
+          )}
+
+          <div className="so-sidebar">
+            <div className="so-card-box">
+              <div className="so-box-hd"><div className="so-box-title"><FiInfo/>How It Works</div></div>
+              <ol className="so-how-list">
+                {[['Search','Find stocked products only'],['Check Stock','View qty & lots'],['Enter Qty','Amount to issue'],['FIFO Applied','Oldest stock first']].map(([t,d],i)=>(
+                  <li key={i}><div className="how-n">{i+1}</div><div><b>{t}</b><span>{d}</span></div></li>
+                ))}
+              </ol>
+            </div>
+
+            <div className="so-card-box">
+              <div className="so-box-hd purple-hd"><div className="so-box-title"><FiLayers/>FIFO System</div></div>
+              <ul className="so-fifo-list">
+                {['Oldest stock issued first','Spans multiple lots','Prevents stock expiry','Accurate cost tracking'].map(t=>(
+                  <li key={t}><FiZap size={12}/>{t}</li>
+                ))}
+              </ul>
+            </div>
+
+            {currentStock&&selectedProduct&&(
+              <div className="so-card-box">
+                <div className="so-box-hd green-hd"><div className="so-box-title"><FiBarChart2/>Stock Overview</div></div>
+                <div className="so-ov-body">
+                  {[
+                    ['Total Stock',parseFloat(currentStock.totalStock||0).toFixed(2),'green'],
+                    ['Active Lots',currentStock.lots?.length||0,''],
+                    ['Min Level',selectedProduct.minStockLevel||'—',''],
+                    ...(formData.quantity&&!insufficientStock?[['After Issue',remaining?.toFixed(2),'orange']]:[] ),
+                  ].map(([k,v,cls])=>(
+                    <div key={k} className="so-ov-row">
+                      <span>{k}</span><span className={`ov-val ${cls}`}>{v}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
-
-          {/* Issue Stock Form */}
-          {selectedProduct && currentStock && parseFloat(currentStock.totalStock || 0) > 0 && (
-            <form onSubmit={handleSubmit}>
-              <div className="card-modern">
-                <div className="card-header">
-                  <FiTrendingDown className="card-icon" />
-                  <h3>Issue Details</h3>
-                </div>
-
-                <div className="form-section">
-                  {/* Quantity Input */}
-                  <div className="input-group-modern">
-                    <label>
-                      <FiBox className="label-icon" />
-                      Quantity to Issue *
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={formData.quantity}
-                      onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                      placeholder="Enter quantity"
-                      className={`input-modern ${insufficientStock ? 'input-error' : ''}`}
-                      required
-                      max={currentStock.totalStock}
-                    />
-                    
-                    {/* Quick Fill Buttons */}
-                    <div className="quick-actions">
-                      <button type="button" onClick={() => quickFillQuantity(25)} className="btn-quick">25%</button>
-                      <button type="button" onClick={() => quickFillQuantity(50)} className="btn-quick">50%</button>
-                      <button type="button" onClick={() => quickFillQuantity(75)} className="btn-quick">75%</button>
-                      <button type="button" onClick={() => quickFillQuantity(100)} className="btn-quick">All</button>
-                    </div>
-
-                    {/* Stock Status */}
-                    <div className={`stock-status ${insufficientStock ? 'error' : 'success'}`}>
-                      {insufficientStock ? (
-                        <>
-                          <FiAlertTriangle size={14} />
-                          <span>Insufficient stock! Available: {parseFloat(currentStock.totalStock || 0).toFixed(2)}</span>
-                        </>
-                      ) : formData.quantity ? (
-                        <>
-                          <FiCheckCircle size={14} />
-                          <span>Available: {parseFloat(currentStock.totalStock || 0).toFixed(2)} units</span>
-                        </>
-                      ) : (
-                        <>
-                          <FiInfo size={14} />
-                          <span>Max available: {parseFloat(currentStock.totalStock || 0).toFixed(2)} units</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Transaction Type */}
-                  <div className="input-group-modern">
-                    <label>
-                      <FiLayers className="label-icon" />
-                      Transaction Type *
-                    </label>
-                    <div className="transaction-types">
-                      {['Production', 'Sale', 'Damage', 'Scrap'].map((type) => (
-                        <label key={type} className={`transaction-option ${formData.transactionType === type ? 'active' : ''}`}>
-                          <input
-                            type="radio"
-                            name="transactionType"
-                            value={type}
-                            checked={formData.transactionType === type}
-                            onChange={(e) => setFormData({ ...formData, transactionType: e.target.value })}
-                          />
-                          <span className="option-icon">{getTransactionIcon(type)}</span>
-                          <span className="option-text">{type}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Reference Number */}
-                  <div className="input-group-modern">
-                    <label>
-                      <FiClock className="label-icon" />
-                      Work Order / Reference Number
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.referenceNumber}
-                      onChange={(e) => setFormData({ ...formData, referenceNumber: e.target.value })}
-                      placeholder="e.g., WO-001, SO-123"
-                      className="input-modern"
-                    />
-                  </div>
-
-                  {/* Notes */}
-                  <div className="input-group-modern">
-                    <label>
-                      <FiInfo className="label-icon" />
-                      Notes
-                    </label>
-                    <textarea
-                      value={formData.notes}
-                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                      placeholder="Additional notes (optional)"
-                      className="textarea-modern"
-                      rows="3"
-                    />
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="form-actions-modern">
-                  <button type="button" onClick={resetForm} className="btn-secondary-modern">
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="btn-danger-modern" 
-                    disabled={loading || insufficientStock || !formData.quantity}
-                  >
-                    {loading ? 'Issuing Stock...' : 'Issue Stock'}
-                  </button>
-                </div>
-              </div>
-            </form>
-          )}
-        </div>
-
-        {/* Sidebar */}
-        <div className="sidebar-section">
-          {/* Quick Info */}
-          <div className="card-modern info-card">
-            <div className="card-header">
-              <FiInfo className="card-icon" />
-              <h3>How It Works</h3>
-            </div>
-            <div className="info-list">
-              <div className="info-item">
-                <div className="info-number danger">1</div>
-                <div className="info-text">
-                  <strong>Select Product</strong>
-                  <span>Choose product to issue</span>
-                </div>
-              </div>
-              <div className="info-item">
-                <div className="info-number danger">2</div>
-                <div className="info-text">
-                  <strong>Check Stock</strong>
-                  <span>View available quantity</span>
-                </div>
-              </div>
-              <div className="info-item">
-                <div className="info-number danger">3</div>
-                <div className="info-text">
-                  <strong>Enter Quantity</strong>
-                  <span>Specify amount to issue</span>
-                </div>
-              </div>
-              <div className="info-item">
-                <div className="info-number danger">4</div>
-                <div className="info-text">
-                  <strong>FIFO Applied</strong>
-                  <span>Oldest stock used first</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* FIFO Info */}
-          <div className="card-modern warning-card">
-            <div className="card-header">
-              <FiAlertTriangle className="card-icon" />
-              <h3>FIFO System</h3>
-            </div>
-            <div className="warning-content">
-              <p><strong>First In, First Out</strong></p>
-              <ul>
-                <li>Oldest stock issued first automatically</li>
-                <li>Multiple lots used if needed</li>
-                <li>Prevents stock expiry</li>
-                <li>Accurate cost tracking</li>
-              </ul>
-            </div>
-          </div>
         </div>
       </div>
 
-      {/* Confirmation Modal */}
-      {showConfirmation && selectedProduct && currentStock && (
-        <div className="modal-overlay-modern" onClick={() => setShowConfirmation(false)}>
-          <div className="modal-content-modern" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-icon-modern danger">
-              <FiTrendingDown size={48} />
-            </div>
+      {/* MODAL */}
+      {showConfirmation&&selectedProduct&&currentStock&&(
+        <div className="so-overlay" onClick={()=>setShowConfirmation(false)}>
+          <div className="so-modal" onClick={e=>e.stopPropagation()}>
+            <div className="so-modal-ico"><FiTrendingDown/></div>
             <h3>Confirm Stock Issue</h3>
-            <div className="confirmation-details">
-              <p><strong>Product:</strong> {selectedProduct.partNumber} - {selectedProduct.description}</p>
-              <p><strong>Quantity:</strong> {formData.quantity} units</p>
-              <p><strong>Transaction:</strong> {formData.transactionType}</p>
-              <p><strong>Remaining Stock:</strong> {(parseFloat(currentStock.totalStock || 0) - parseFloat(formData.quantity)).toFixed(2)} units</p>
-              {formData.referenceNumber && (
-                <p><strong>Reference:</strong> {formData.referenceNumber}</p>
-              )}
+            <p className="so-modal-sub">Please review before confirming</p>
+            <div className="so-modal-tbl">
+              {[
+                ['Product',`${selectedProduct.partNumber||'—'} — ${selectedProduct.description||'—'}`],
+                ['Quantity',`${formData.quantity} units`],
+                ['Transaction',formData.transactionType],
+                ['After Issue',`${(parseFloat(currentStock.totalStock||0)-parseFloat(formData.quantity)).toFixed(2)} units`],
+                ...(formData.referenceNumber?[['Reference',formData.referenceNumber]]:[]),
+              ].map(([k,v])=>(
+                <div key={k} className="so-m-row"><span>{k}</span><span>{v}</span></div>
+              ))}
             </div>
-            <div className="modal-warning">
-              <FiAlertTriangle size={16} />
-              <span>This action will reduce stock using FIFO method</span>
-            </div>
-            <div className="modal-actions-modern">
-              <button onClick={() => setShowConfirmation(false)} className="btn-secondary-modern">
-                Cancel
-              </button>
-              <button onClick={confirmSubmit} className="btn-danger-modern">
-                Confirm & Issue
-              </button>
+            <div className="so-m-warn"><FiAlertTriangle/>Stock deducted via FIFO</div>
+            <div className="so-m-actions">
+              <button className="so-ghost-btn" onClick={()=>setShowConfirmation(false)}>Cancel</button>
+              <button className="so-issue-btn" onClick={confirmSubmit}><FiCheck/>Confirm & Issue</button>
             </div>
           </div>
         </div>

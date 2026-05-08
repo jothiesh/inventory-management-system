@@ -3,40 +3,6 @@
  */
 
 // ============================================
-// API ENDPOINTS
-// ============================================
-export const API_ENDPOINTS = {
-  AUTH: {
-    LOGIN: '/auth/login',
-    LOGOUT: '/auth/logout',
-    REFRESH: '/auth/refresh',
-  },
-  CATEGORIES: '/categories',
-  PRODUCTS: '/products',
-  RACKS: '/racks',
-  BOXES: '/boxes',
-  SUPPLIERS: '/suppliers',
-  LOTS: '/lots',
-  STOCK: {
-    IN: '/stock/in',
-    OUT: '/stock/out',
-    CURRENT: '/stock/current',
-    BY_PRODUCT: '/stock/product',
-  },
-  ALERTS: '/alerts',
-  REPORTS: {
-    STOCK_SUMMARY: '/reports/stock-summary',
-    CATEGORY_WISE: '/reports/category-wise',
-    RACK_WISE: '/reports/rack-wise',
-    DEAD_STOCK: '/reports/dead-stock',
-    SLOW_MOVING: '/reports/slow-moving',
-    PRICE_DIFFERENCE: '/reports/price-difference',
-    STOCK_VALUE: '/reports/stock-value',
-  },
-  INIT: '/init',
-};
-
-// ============================================
 // USER ROLES
 // ============================================
 export const USER_ROLES = {
@@ -108,6 +74,9 @@ export const ALERT_TYPES = {
   PRICE_CHANGE: 'PRICE_CHANGE',
   LOW_STOCK: 'LOW_STOCK',
   EXCESS_STOCK: 'EXCESS_STOCK',
+  NEW_PRODUCT: 'NEW_PRODUCT',
+  STOCK_ADDED: 'STOCK_ADDED',
+  CATEGORY_ADDED: 'CATEGORY_ADDED',
 };
 
 // ============================================
@@ -119,13 +88,10 @@ export const ALERT_SEVERITY = {
   HIGH: 'HIGH',
 };
 
-// ============================================
-// ALERT SEVERITY COLORS
-// ============================================
 export const ALERT_COLORS = {
-  HIGH: '#ef4444',      // Red
-  MEDIUM: '#f59e0b',    // Yellow
-  LOW: '#3b82f6',       // Blue
+  HIGH: '#ef4444',
+  MEDIUM: '#f59e0b',
+  LOW: '#3b82f6',
 };
 
 // ============================================
@@ -138,25 +104,24 @@ export const STOCK_STATUS = {
   EXCESS_STOCK: 'Excess Stock',
 };
 
-// ============================================
-// STOCK STATUS COLORS
-// ============================================
 export const STOCK_STATUS_COLORS = {
-  'In Stock': '#10b981',      // Green
-  'Low Stock': '#f59e0b',     // Yellow
-  'Out of Stock': '#ef4444',  // Red
-  'Excess Stock': '#3b82f6',  // Blue
+  'In Stock': '#10b981',
+  'Low Stock': '#f59e0b',
+  'Out of Stock': '#ef4444',
+  'Excess Stock': '#3b82f6',
 };
 
 // ============================================
-// DATE FORMATS
+// ✅ FIX: DATE FORMATS - Use correct date-fns tokens
+// date-fns uses: dd (day), MMM (month), yyyy (year), HH:mm (time)
+// NOT: DD (day-of-year), YYYY (week-year)
 // ============================================
 export const DATE_FORMATS = {
-  DISPLAY: 'DD MMM YYYY',
-  DISPLAY_WITH_TIME: 'DD MMM YYYY HH:mm',
-  INPUT: 'YYYY-MM-DD',
-  API: 'YYYY-MM-DD',
-  FULL: 'MMMM DD, YYYY',
+  DISPLAY: 'dd MMM yyyy',
+  DISPLAY_WITH_TIME: 'dd MMM yyyy HH:mm',
+  INPUT: 'yyyy-MM-dd',
+  API: 'yyyy-MM-dd',
+  FULL: 'MMMM dd, yyyy',
 };
 
 // ============================================
@@ -213,34 +178,6 @@ export const STORAGE_KEYS = {
 };
 
 // ============================================
-// TOAST CONFIGURATION
-// ============================================
-export const TOAST_CONFIG = {
-  POSITION: 'top-right',
-  AUTO_CLOSE: 3000,
-  HIDE_PROGRESS_BAR: false,
-  CLOSE_ON_CLICK: true,
-  PAUSE_ON_HOVER: true,
-  DRAGGABLE: true,
-};
-
-// ============================================
-// CHART COLORS
-// ============================================
-export const CHART_COLORS = [
-  '#4f46e5', // Indigo
-  '#10b981', // Green
-  '#f59e0b', // Yellow
-  '#ef4444', // Red
-  '#8b5cf6', // Purple
-  '#ec4899', // Pink
-  '#14b8a6', // Teal
-  '#f97316', // Orange
-  '#06b6d4', // Cyan
-  '#6366f1', // Light Indigo
-];
-
-// ============================================
 // ROUTES
 // ============================================
 export const ROUTES = {
@@ -255,6 +192,8 @@ export const ROUTES = {
   CURRENT_STOCK: '/current-stock',
   ALERTS: '/alerts',
   REPORTS: '/reports',
+  STOCK_OUT_HISTORY: '/stock-out-history',
+  EXCEL_IMPORT: '/excel-import',
 };
 
 // ============================================
@@ -275,60 +214,20 @@ export const ERROR_MESSAGES = {
 };
 
 // ============================================
-// SUCCESS MESSAGES
+// CHART COLORS
 // ============================================
-export const SUCCESS_MESSAGES = {
-  LOGIN: 'Login successful',
-  LOGOUT: 'Logout successful',
-  CREATED: 'Created successfully',
-  UPDATED: 'Updated successfully',
-  DELETED: 'Deleted successfully',
-  STOCK_IN: 'Stock added successfully',
-  STOCK_OUT: 'Stock issued successfully',
-  ALERT_READ: 'Alert marked as read',
-  DATA_INITIALIZED: 'Default data initialized successfully',
-};
-
-// ============================================
-// REPORT TYPES
-// ============================================
-export const REPORT_TYPES = {
-  STOCK_SUMMARY: {
-    id: 'stock-summary',
-    label: 'Stock Summary',
-    icon: '📊',
-  },
-  CATEGORY_WISE: {
-    id: 'category-wise',
-    label: 'Category-wise',
-    icon: '📁',
-  },
-  RACK_WISE: {
-    id: 'rack-wise',
-    label: 'Rack-wise',
-    icon: '🗄️',
-  },
-  DEAD_STOCK: {
-    id: 'dead-stock',
-    label: 'Dead Stock',
-    icon: '⚠️',
-  },
-  SLOW_MOVING: {
-    id: 'slow-moving',
-    label: 'Slow Moving',
-    icon: '🐌',
-  },
-  PRICE_DIFFERENCE: {
-    id: 'price-difference',
-    label: 'Price Difference',
-    icon: '💰',
-  },
-  STOCK_VALUE: {
-    id: 'stock-value',
-    label: 'Stock Value',
-    icon: '💵',
-  },
-};
+export const CHART_COLORS = [
+  '#4f46e5',
+  '#10b981',
+  '#f59e0b',
+  '#ef4444',
+  '#8b5cf6',
+  '#ec4899',
+  '#14b8a6',
+  '#f97316',
+  '#06b6d4',
+  '#6366f1',
+];
 
 // ============================================
 // DEFAULT VALUES
@@ -340,52 +239,15 @@ export const DEFAULT_VALUES = {
 };
 
 // ============================================
-// FILE UPLOAD
-// ============================================
-export const FILE_UPLOAD = {
-  MAX_SIZE: 5 * 1024 * 1024, // 5MB
-  ALLOWED_TYPES: ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'],
-};
-
-// ============================================
 // DEBOUNCE DELAY (milliseconds)
 // ============================================
 export const DEBOUNCE_DELAY = 300;
 
 // ============================================
-// REFRESH INTERVAL (milliseconds)
+// REFRESH INTERVALS (milliseconds)
 // ============================================
 export const REFRESH_INTERVALS = {
-  DASHBOARD: 30000,      // 30 seconds
-  ALERTS: 60000,         // 1 minute
-  STOCK: 60000,          // 1 minute
-};
-
-export default {
-  API_ENDPOINTS,
-  USER_ROLES,
-  PRODUCT_TYPES,
-  UNITS,
-  MOVEMENT_TYPES,
-  TRANSACTION_TYPES,
-  LOT_STATUS,
-  ALERT_TYPES,
-  ALERT_SEVERITY,
-  ALERT_COLORS,
-  STOCK_STATUS,
-  STOCK_STATUS_COLORS,
-  DATE_FORMATS,
-  PAGINATION,
-  VALIDATION_RULES,
-  STORAGE_KEYS,
-  TOAST_CONFIG,
-  CHART_COLORS,
-  ROUTES,
-  ERROR_MESSAGES,
-  SUCCESS_MESSAGES,
-  REPORT_TYPES,
-  DEFAULT_VALUES,
-  FILE_UPLOAD,
-  DEBOUNCE_DELAY,
-  REFRESH_INTERVALS,
+  DASHBOARD: 30000,
+  ALERTS: 60000,
+  STOCK: 60000,
 };

@@ -46,7 +46,8 @@ public class AlertController {
     @PreAuthorize("hasAuthority('OWNER')")
     @Operation(summary = "Get unread alerts count", description = "Get count of unread alerts (Owner only)")
     public ResponseEntity<ApiResponse<Long>> getUnreadAlertsCount() {
-        Long count = alertService.getUnreadAlertsCount();
+        // Changed from getUnreadAlertsCount() to getUnreadCount()
+        Long count = alertService.getUnreadCount(); 
         return ResponseEntity.ok(ApiResponse.success("Unread count retrieved successfully", count));
     }
 

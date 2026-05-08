@@ -3,6 +3,7 @@ package com.company.inventory.config;
 import com.company.inventory.security.JwtAuthenticationFilter;
 import com.company.inventory.security.UserDetailsServiceImpl;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -12,7 +13,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.crypto.password.NoOpPasswordEncoder;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -21,6 +22,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -31,11 +33,12 @@ public class SecurityConfig {
     private final UserDetailsServiceImpl userDetailsService;
     private final JwtAuthenticationFilter jwtAuthFilter;
 
+    @Value("${cors.allowed-origins:http://localhost:5173,http://localhost:5174,http://localhost:3000,http://127.0.0.1:5173,http://localhost:3001}")
+    private String allowedOriginsStr;
+
     @Bean
-    @SuppressWarnings("deprecation")
     public PasswordEncoder passwordEncoder() {
-        // ⚠️ TEMPORARY: Use plain text passwords (NO ENCRYPTION)
-        return NoOpPasswordEncoder.getInstance();
+        return new BCryptPasswordEncoder();
     }
 
     @Bean
@@ -57,15 +60,34 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
+
+                // ── Public ───────────────────────────────────────────
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/init/**").permitAll()
                 .requestMatchers("/api/test/**").permitAll()
                 .requestMatchers("/swagger-ui/**", "/api-docs/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/h2-console/**").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
+
+                // ── Static frontend files ─────────────────────────────
+                .requestMatchers("/", "/index.html", "/static/**", "/assets/**",
+                        "/*.js", "/*.css", "/*.ico", "/*.svg", "/*.png", "/*.json").permitAll()
+
+                // ── Owner only ────────────────────────────────────────
                 .requestMatchers("/api/owner/**").hasAuthority("OWNER")
+
+                // ── Purchase Requests — authenticated ─────────────────
+                .requestMatchers("/api/purchase-requests/**").authenticated()
+
+                // ── Purchase Orders — authenticated ───────────────────
+                .requestMatchers("/api/purchase-orders/**").authenticated()
+                
+
+                // ── All other API — authenticated ─────────────────────
                 .requestMatchers("/api/**").authenticated()
-                .anyRequest().authenticated()
+
+                // ── React Router paths ────────────────────────────────
+                .anyRequest().permitAll()
             )
             .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
@@ -73,45 +95,26 @@ public class SecurityConfig {
             .authenticationProvider(authenticationProvider())
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .headers(headers -> headers.frameOptions(frame -> frame.disable()));
-        
+
         return http.build();
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        
-        // Allow credentials (cookies, authorization headers, etc.)
-        configuration.setAllowCredentials(true);
-        
-        // Allow requests from frontend (development)
-        configuration.setAllowedOriginPatterns(Arrays.asList(
-            "http://localhost:3000",
-            "http://localhost:3001",
-            "http://localhost:5173",  // Vite default port
-            "*"  // Allow all origins (for development only)
-        ));
-        
-        // Allow all HTTP methods
+        List<String> origins = Arrays.asList(allowedOriginsStr.split(","));
+        configuration.setAllowedOrigins(origins);
         configuration.setAllowedMethods(Arrays.asList(
-            "GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"
+                "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
         ));
-        
-        // Allow all headers
-        configuration.setAllowedHeaders(Arrays.asList("*"));
-        
-        // Expose headers to the client
-        configuration.setExposedHeaders(Arrays.asList(
-            "Authorization",
-            "Content-Disposition"
-        ));
-        
-        // Cache preflight response for 1 hour
+        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
-        
+        configuration.setExposedHeaders(Arrays.asList(
+                "Authorization", "Content-Disposition"
+        ));
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
-        
         return source;
     }
 }

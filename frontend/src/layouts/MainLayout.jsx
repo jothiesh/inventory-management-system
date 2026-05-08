@@ -15,10 +15,11 @@ import {
   FiBarChart2,
   FiLogOut,
   FiMenu,
-  FiX,
   FiUpload,
   FiChevronLeft,
-  FiChevronRight
+  FiChevronRight,
+  FiShoppingCart,
+  FiClipboard
 } from 'react-icons/fi';
 import './MainLayout.css';
 
@@ -30,15 +31,15 @@ const MainLayout = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Load unread alert count on mount
+  // ── Only load alerts for OWNER ───────────────────────────────────
   useEffect(() => {
-    loadUnreadCount();
-  }, []);
+    if (user?.role === 'OWNER') {
+      loadUnreadCount();
+    }
+  }, [user]);
 
-  // Refresh badge when navigating to/from alerts
   useEffect(() => {
-    if (location.pathname === '/alerts') {
-      // Small delay then reload after user likely read alerts
+    if (location.pathname === '/alerts' && user?.role === 'OWNER') {
       const timer = setTimeout(() => loadUnreadCount(), 2000);
       return () => clearTimeout(timer);
     }
@@ -55,7 +56,6 @@ const MainLayout = () => {
     }
   };
 
-  // Nav grouped by section
   const navSections = [
     {
       label: 'Overview',
@@ -70,6 +70,13 @@ const MainLayout = () => {
         { path: '/products', icon: <FiPackage size={18} />, label: 'Products', roles: ['OWNER', 'STORE_MANAGER'] },
         { path: '/racks', icon: <FiBox size={18} />, label: 'Racks & Boxes', roles: ['OWNER', 'STORE_MANAGER'] },
         { path: '/suppliers', icon: <FiUsers size={18} />, label: 'Suppliers', roles: ['OWNER', 'STORE_MANAGER'] },
+      ]
+    },
+    {
+      label: 'Procurement',
+      items: [
+        { path: '/purchase-requests', icon: <FiClipboard size={18} />, label: 'Purchase Requests', roles: ['OWNER', 'STORE_MANAGER'] },
+      //  { path: '/purchase-orders',   icon: <FiShoppingCart size={18} />, label: 'Purchase Orders',  roles: ['OWNER', 'STORE_MANAGER'] },
       ]
     },
     {
@@ -95,7 +102,6 @@ const MainLayout = () => {
     navigate('/login');
   };
 
-  // Close mobile sidebar on route change
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname]);
@@ -103,7 +109,6 @@ const MainLayout = () => {
   return (
     <div className="ml-layout">
 
-      {/* ===== MOBILE OVERLAY ===== */}
       {mobileOpen && (
         <div className="ml-overlay" onClick={() => setMobileOpen(false)} />
       )}
@@ -113,12 +118,12 @@ const MainLayout = () => {
 
         {/* Logo / Brand */}
         <div className="ml-sidebar-brand">
-          <div className="ml-brand-icon">
-            <FiBox size={22} />
+          <div className="ml-brand-logo">
+            <img src="/thinlogo.png" alt="Thinture Logo" className="ml-logo-img" />
           </div>
           {sidebarOpen && (
             <div className="ml-brand-text">
-              <span className="ml-brand-name">InvenTrak</span>
+              <span className="ml-brand-name">Thinture</span>
               <span className="ml-brand-sub">Inventory System</span>
             </div>
           )}
@@ -136,7 +141,6 @@ const MainLayout = () => {
         {/* Nav Sections */}
         <nav className="ml-nav">
           {navSections.map((section) => {
-            // Filter items by role
             const visibleItems = section.items.filter(item => item.roles.includes(user?.role));
             if (visibleItems.length === 0) return null;
 
@@ -146,7 +150,8 @@ const MainLayout = () => {
                   <span className="ml-nav-section-label">{section.label}</span>
                 )}
                 {visibleItems.map((item) => {
-                  const isActive = location.pathname === item.path;
+                  const isActive = location.pathname === item.path
+                    || location.pathname.startsWith(item.path + '/');
                   return (
                     <Link
                       key={item.path}
@@ -165,7 +170,6 @@ const MainLayout = () => {
                           )}
                         </>
                       )}
-                      {/* Collapsed badge dot */}
                       {!sidebarOpen && item.badge > 0 && (
                         <span className="ml-nav-badge-dot" />
                       )}
@@ -202,12 +206,10 @@ const MainLayout = () => {
         {/* Top Header */}
         <header className="ml-header">
           <div className="ml-header-left">
-            {/* Mobile hamburger */}
             <button className="ml-mobile-btn" onClick={() => setMobileOpen(!mobileOpen)}>
               <FiMenu size={22} />
             </button>
 
-            {/* Page title from route */}
             <div className="ml-header-title">
               <h2>{getPageTitle(location.pathname)}</h2>
               <span className="ml-header-breadcrumb">
@@ -223,15 +225,15 @@ const MainLayout = () => {
           </div>
 
           <div className="ml-header-right">
-            {/* Notification bell */}
-            <Link to="/alerts" className="ml-header-bell">
-              <FiBell size={20} />
-              {unreadCount > 0 && (
-                <span className="ml-bell-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
-              )}
-            </Link>
-
-            {/* User avatar */}
+            {/* Bell only visible to OWNER */}
+            {user?.role === 'OWNER' && (
+              <Link to="/alerts" className="ml-header-bell">
+                <FiBell size={20} />
+                {unreadCount > 0 && (
+                  <span className="ml-bell-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
+                )}
+              </Link>
+            )}
             <div className="ml-header-avatar">
               <span>{user?.fullName?.charAt(0) || 'U'}</span>
             </div>
@@ -247,21 +249,32 @@ const MainLayout = () => {
   );
 };
 
-// Helper: route path → readable title
 function getPageTitle(pathname) {
   const titles = {
-    '/dashboard': 'Dashboard',
-    '/categories': 'Categories',
-    '/products': 'Products',
-    '/racks': 'Racks & Boxes',
-    '/suppliers': 'Suppliers',
-    '/stock-in': 'Stock IN',
-    '/stock-out': 'Stock OUT',
-    '/current-stock': 'Current Stock',
-    '/alerts': 'Alerts',
-    '/reports': 'Reports',
-    '/excel-import': 'Import Excel',
+    '/dashboard':              'Dashboard',
+    '/categories':             'Categories',
+    '/products':               'Products',
+    '/racks':                  'Racks & Boxes',
+    '/suppliers':              'Suppliers',
+    '/purchase-requests':      'Purchase Requests',
+    '/purchase-requests/new':  'New Purchase Request',
+    '/purchase-orders':        'Purchase Orders',
+    '/purchase-orders/new':    'New Purchase Order',
+    '/stock-in':               'Stock IN',
+    '/stock-out':              'Stock OUT',
+    '/current-stock':          'Current Stock',
+    '/alerts':                 'Alerts',
+    '/reports':                'Reports',
+    '/excel-import':           'Import Excel',
   };
+
+  if (pathname.startsWith('/purchase-requests/') && pathname !== '/purchase-requests/new') {
+    return 'Purchase Request Details';
+  }
+  if (pathname.startsWith('/purchase-orders/') && pathname !== '/purchase-orders/new') {
+    return 'Purchase Order Details';
+  }
+
   return titles[pathname] || 'Dashboard';
 }
 

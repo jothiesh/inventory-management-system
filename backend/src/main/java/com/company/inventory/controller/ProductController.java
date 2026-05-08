@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class ProductController {
-    
+
     private final ProductService productService;
 
     @GetMapping
@@ -61,8 +61,7 @@ public class ProductController {
     }
 
     @GetMapping("/search")
-    public ResponseEntity<ApiResponse<List<ProductResponse>>> searchProducts(
-            @RequestParam String keyword) {
+    public ResponseEntity<ApiResponse<List<ProductResponse>>> searchProducts(@RequestParam String keyword) {
         log.info("Searching products with keyword: {}", keyword);
         List<Product> products = productService.searchProducts(keyword);
         List<ProductResponse> responses = products.stream()
@@ -75,25 +74,15 @@ public class ProductController {
     public ResponseEntity<ApiResponse<ProductResponse>> createProduct(
             @RequestBody ProductRequest request,
             @AuthenticationPrincipal User currentUser) {
-        
+
         log.info("Creating product: {}", request.getPartNumber());
-        
-        // Validate required fields
-        if (request.getPartNumber() == null || request.getPartNumber().trim().isEmpty()) {
-            return ResponseEntity.badRequest()
-                .body(ApiResponse.error("Part number is required"));
-        }
-        
-        if (request.getDescription() == null || request.getDescription().trim().isEmpty()) {
-            return ResponseEntity.badRequest()
-                .body(ApiResponse.error("Description is required"));
-        }
-        
+
+        // ✅ Only category is required — partNumber and description are optional
         if (request.getCategoryId() == null) {
             return ResponseEntity.badRequest()
-                .body(ApiResponse.error("Category is required"));
+                    .body(ApiResponse.error("Category is required"));
         }
-        
+
         Product product = productService.createProduct(request, currentUser);
         return ResponseEntity.ok(ApiResponse.success("Product created successfully", ProductResponse.fromEntity(product)));
     }
@@ -103,14 +92,14 @@ public class ProductController {
             @PathVariable Long id,
             @RequestBody ProductRequest request,
             @AuthenticationPrincipal User currentUser) {
-        
+
         log.info("Updating product ID: {}", id);
-        
+
         if (request.getCategoryId() == null) {
             return ResponseEntity.badRequest()
-                .body(ApiResponse.error("Category is required"));
+                    .body(ApiResponse.error("Category is required"));
         }
-        
+
         Product product = productService.updateProduct(id, request, currentUser);
         return ResponseEntity.ok(ApiResponse.success("Product updated successfully", ProductResponse.fromEntity(product)));
     }

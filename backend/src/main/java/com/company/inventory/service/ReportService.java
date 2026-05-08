@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.*;
 
 @Service
@@ -24,153 +25,168 @@ public class ReportService {
     private final CategoryRepository categoryRepository;
     private final RackRepository rackRepository;
     private final LotService lotService;
+    private final PriceDifferenceService priceDifferenceService;
 
+    // ----------------------------------------------------------------
+    // STOCK SUMMARY
+    // Frontend keys: totalProducts, inStock, lowStock, outOfStock, products[]
+    // ----------------------------------------------------------------
     @Transactional(readOnly = true)
     public Map<String, Object> getStockSummaryReport() {
-        Map<String, Object> summary = new HashMap<>();
-        
         List<Product> products = productRepository.findByIsActiveTrue();
-        int totalProducts = products.size();
-        int productsInStock = 0;
-        int productsOutOfStock = 0;
-        int lowStockProducts = 0;
-        
+        int inStock = 0, outOfStock = 0, lowStock = 0;
+        List<Map<String, Object>> productList = new ArrayList<>();
+
         for (Product product : products) {
             BigDecimal currentStock = lotService.getTotalStockByProduct(product.getProductId());
-            
-            if (currentStock.compareTo(BigDecimal.ZERO) > 0) {
-                productsInStock++;
-                
-                // FIXED: Changed getReorderLevel() to getMinStockLevel()
-                if (product.getMinStockLevel() != null && 
-                    currentStock.compareTo(BigDecimal.valueOf(product.getMinStockLevel())) <= 0) {
-                    lowStockProducts++;
-                }
+            String status;
+            if (currentStock.compareTo(BigDecimal.ZERO) <= 0) {
+                outOfStock++;
+                status = "Out of Stock";
             } else {
-                productsOutOfStock++;
+                inStock++;
+                if (product.getMinStockLevel() != null &&
+                        currentStock.compareTo(BigDecimal.valueOf(product.getMinStockLevel())) <= 0) {
+                    lowStock++;
+                    status = "Low Stock";
+                } else {
+                    status = "In Stock";
+                }
             }
+
+            Map<String, Object> p = new HashMap<>();
+            p.put("partNumber",   product.getPartNumber());
+            p.put("description",  product.getDescription());
+            p.put("categoryName", product.getCategory() != null
+                    ? product.getCategory().getCategoryName() : "Uncategorized");
+            p.put("totalStock",   currentStock);
+            p.put("status",       status);
+            productList.add(p);
         }
-        
-        summary.put("totalProducts", totalProducts);
-        summary.put("productsInStock", productsInStock);
-        summary.put("productsOutOfStock", productsOutOfStock);
-        summary.put("lowStockProducts", lowStockProducts);
-        
+
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("totalProducts", products.size());
+        summary.put("inStock",       inStock);
+        summary.put("outOfStock",    outOfStock);
+        summary.put("lowStock",      lowStock);
+        summary.put("products",      productList);
         return summary;
     }
 
+    // ----------------------------------------------------------------
+    // CATEGORY WISE
+    // Frontend keys: categoryName, totalProducts, totalStock, totalValue
+    // ----------------------------------------------------------------
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getCategoryWiseStockReport() {
         List<Map<String, Object>> report = new ArrayList<>();
-        List<Category> categories = categoryRepository.findByIsActiveTrue();
-        
-        for (Category category : categories) {
+        for (Category category : categoryRepository.findByIsActiveTrue()) {
             List<Product> products = productRepository.findByCategoryCategoryId(category.getCategoryId());
-            
-            int totalProducts = products.size();
-            BigDecimal totalStock = BigDecimal.ZERO;
-            BigDecimal totalValue = BigDecimal.ZERO;
-            
+            BigDecimal totalStock = BigDecimal.ZERO, totalValue = BigDecimal.ZERO;
             for (Product product : products) {
-                BigDecimal stock = lotService.getTotalStockByProduct(product.getProductId());
-                totalStock = totalStock.add(stock);
-                
-                List<Lot> lots = lotRepository.findActiveLotsByProductForFIFO(product.getProductId());
-                for (Lot lot : lots) {
-                    BigDecimal lotValue = lot.getRemainingQuantity().multiply(lot.getPurchasePrice());
-                    totalValue = totalValue.add(lotValue);
+                totalStock = totalStock.add(lotService.getTotalStockByProduct(product.getProductId()));
+                for (Lot lot : lotRepository.findActiveLotsByProductForFIFO(product.getProductId())) {
+                    totalValue = totalValue.add(lot.getRemainingQuantity().multiply(lot.getPurchasePrice()));
                 }
             }
-            
-            Map<String, Object> categoryData = new HashMap<>();
-            categoryData.put("category", category);
-            categoryData.put("totalProducts", totalProducts);
-            categoryData.put("totalStock", totalStock);
-            categoryData.put("totalValue", totalValue);
-            
-            report.add(categoryData);
+            Map<String, Object> row = new HashMap<>();
+            row.put("categoryName",  category.getCategoryName());
+            row.put("totalProducts", products.size());
+            row.put("totalStock",    totalStock);
+            row.put("totalValue",    totalValue);
+            report.add(row);
         }
-        
         return report;
     }
 
+    // ----------------------------------------------------------------
+    // RACK WISE
+    // Frontend keys: rackNumber, rackName, totalItems, totalStock, totalValue
+    // ----------------------------------------------------------------
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getRackWiseStockReport() {
         List<Map<String, Object>> report = new ArrayList<>();
-        List<Rack> racks = rackRepository.findByIsActiveTrue();
-        
-        for (Rack rack : racks) {
+        for (Rack rack : rackRepository.findByIsActiveTrue()) {
             List<Lot> lots = lotRepository.findAll().stream()
-                    .filter(lot -> lot.getRack() != null && 
-                                   lot.getRack().getRackId().equals(rack.getRackId()) &&
-                                   lot.getStatus() == Lot.LotStatus.Active)
+                    .filter(lot -> lot.getRack() != null
+                            && lot.getRack().getRackId().equals(rack.getRackId())
+                            && lot.getStatus() == Lot.LotStatus.Active)
                     .toList();
-            
-            BigDecimal totalStock = BigDecimal.ZERO;
-            BigDecimal totalValue = BigDecimal.ZERO;
-            int totalItems = lots.size();
-            
+            BigDecimal totalStock = BigDecimal.ZERO, totalValue = BigDecimal.ZERO;
             for (Lot lot : lots) {
                 totalStock = totalStock.add(lot.getRemainingQuantity());
-                BigDecimal lotValue = lot.getRemainingQuantity().multiply(lot.getPurchasePrice());
-                totalValue = totalValue.add(lotValue);
+                totalValue = totalValue.add(lot.getRemainingQuantity().multiply(lot.getPurchasePrice()));
             }
-            
-            Map<String, Object> rackData = new HashMap<>();
-            rackData.put("rack", rack);
-            rackData.put("totalItems", totalItems);
-            rackData.put("totalStock", totalStock);
-            rackData.put("totalValue", totalValue);
-            
-            report.add(rackData);
+            Map<String, Object> row = new HashMap<>();
+            row.put("rackNumber", rack.getRackNumber());
+            row.put("rackName",   rack.getRackName());
+            row.put("totalItems", lots.size());
+            row.put("totalStock", totalStock);
+            row.put("totalValue", totalValue);
+            report.add(row);
         }
-        
         return report;
     }
 
+    // ----------------------------------------------------------------
+    // PRICE DIFFERENCE — delegated to PriceDifferenceService
+    // Case A: cross-supplier variance
+    // Case B: same-supplier price change over time
+    // ----------------------------------------------------------------
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getPriceDifferenceReport() {
-        List<Map<String, Object>> report = new ArrayList<>();
-        List<Product> products = productRepository.findByIsActiveTrue();
-        
-        for (Product product : products) {
-            List<BigDecimal> prices = lotRepository.findDistinctPricesByProduct(product.getProductId());
-            
-            if (prices.size() > 1) {
-                List<Lot> lots = lotRepository.findActiveLotsByProductForFIFO(product.getProductId());
-                
-                Map<String, Object> productData = new HashMap<>();
-                productData.put("product", product);
-                productData.put("differentPrices", prices);
-                productData.put("lots", lots);
-                productData.put("priceCount", prices.size());
-                
-                report.add(productData);
-            }
-        }
-        
-        return report;
+        return priceDifferenceService.getPriceDifferenceReport();
     }
 
+    // ----------------------------------------------------------------
+    // STOCK VALUE
+    // Frontend keys: totalProducts, totalStockValue, totalQuantity,
+    //                averagePrice, categoryBreakdown[]
+    // ----------------------------------------------------------------
     @Transactional(readOnly = true)
     public Map<String, Object> getStockValueReport() {
-        Map<String, Object> report = new HashMap<>();
-        
         List<Lot> activeLots = lotRepository.findAll().stream()
-                .filter(lot -> lot.getStatus() == Lot.LotStatus.Active)
+                .filter(lot -> lot.getStatus() == Lot.LotStatus.Active
+                        && lot.getRemainingQuantity().compareTo(BigDecimal.ZERO) > 0)
                 .toList();
-        
-        BigDecimal totalValue = BigDecimal.ZERO;
-        int totalLots = activeLots.size();
-        
+
+        BigDecimal totalValue = BigDecimal.ZERO, totalQuantity = BigDecimal.ZERO;
         for (Lot lot : activeLots) {
-            BigDecimal lotValue = lot.getRemainingQuantity().multiply(lot.getPurchasePrice());
-            totalValue = totalValue.add(lotValue);
+            totalValue    = totalValue.add(lot.getRemainingQuantity().multiply(lot.getPurchasePrice()));
+            totalQuantity = totalQuantity.add(lot.getRemainingQuantity());
         }
-        
-        report.put("totalStockValue", totalValue);
-        report.put("totalActiveLots", totalLots);
-        
+        BigDecimal averagePrice = totalQuantity.compareTo(BigDecimal.ZERO) > 0
+                ? totalValue.divide(totalQuantity, 2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+
+        List<Map<String, Object>> categoryBreakdown = new ArrayList<>();
+        for (Category category : categoryRepository.findByIsActiveTrue()) {
+            List<Product> catProducts = productRepository.findByCategoryCategoryId(category.getCategoryId());
+            BigDecimal catValue = BigDecimal.ZERO, catQty = BigDecimal.ZERO;
+            for (Product product : catProducts) {
+                for (Lot lot : lotRepository.findActiveLotsByProductForFIFO(product.getProductId())) {
+                    catQty   = catQty.add(lot.getRemainingQuantity());
+                    catValue = catValue.add(lot.getRemainingQuantity().multiply(lot.getPurchasePrice()));
+                }
+            }
+            String percentage = totalValue.compareTo(BigDecimal.ZERO) > 0
+                    ? catValue.multiply(BigDecimal.valueOf(100))
+                              .divide(totalValue, 1, RoundingMode.HALF_UP).toPlainString()
+                    : "0";
+            Map<String, Object> catRow = new HashMap<>();
+            catRow.put("categoryName",  category.getCategoryName());
+            catRow.put("productCount",  catProducts.size());
+            catRow.put("totalQuantity", catQty);
+            catRow.put("totalValue",    catValue);
+            catRow.put("percentage",    percentage);
+            categoryBreakdown.add(catRow);
+        }
+
+        Map<String, Object> report = new HashMap<>();
+        report.put("totalProducts",    productRepository.findByIsActiveTrue().size());
+        report.put("totalStockValue",  totalValue);
+        report.put("totalQuantity",    totalQuantity);
+        report.put("averagePrice",     averagePrice);
+        report.put("categoryBreakdown",categoryBreakdown);
         return report;
     }
 }

@@ -11,5 +11,5 @@ export const authApi = {
 
   getCurrentUser: () => {
     return axiosInstance.get('/auth/me');
-  }
+  },
 };

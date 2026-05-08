@@ -12,32 +12,13 @@ import java.util.Optional;
 
 @Repository
 public interface LotRepository extends JpaRepository<Lot, Long> {
-    
+
+    // ─── FIFO / stock-out ────────────────────────────────────────────────────
+
     /**
-     * Find lots by product and status, ordered by purchase date (FIFO)
-     */
-    List<Lot> findByProductProductIdAndStatusOrderByPurchaseDateAsc(
-            Long productId, 
-            Lot.LotStatus status
-    );
-    
-    /**
-     * Find all lots for a product
-     */
-    List<Lot> findByProductProductId(Long productId);
-    
-    /**
-     * Find lots by product ordered by date (newest first)
-     * Used for price history
-     */
-    @Query("SELECT l FROM Lot l " +
-           "WHERE l.product.productId = :productId " +
-           "ORDER BY l.purchaseDate DESC, l.createdAt DESC")
-    List<Lot> findByProductProductIdOrderByPurchaseDateDesc(@Param("productId") Long productId);
-    
-    /**
-     * Find active lots with remaining quantity for FIFO processing
-     * CRITICAL: Used for Stock OUT operations
+     * Active lots with remaining quantity, oldest-first (FIFO).
+     * Filters by status=Active AND remainingQuantity > 0.
+     * CRITICAL: used for Stock OUT operations.
      */
     @Query("SELECT l FROM Lot l " +
            "WHERE l.product.productId = :productId " +
@@ -45,85 +26,87 @@ public interface LotRepository extends JpaRepository<Lot, Long> {
            "AND l.remainingQuantity > 0 " +
            "ORDER BY l.purchaseDate ASC, l.createdAt ASC")
     List<Lot> findActiveLotsByProductForFIFO(@Param("productId") Long productId);
-    
+
     /**
-     * Find distinct purchase prices for a product
-     * Used for price difference detection
+     * Lots with remaining quantity > 0, oldest-first (FIFO).
+     * Does NOT filter by status — use when exhausted lots should still appear.
      */
-    @Query("SELECT DISTINCT l.purchasePrice " +
-           "FROM Lot l " +
+    @Query("SELECT l FROM Lot l " +
            "WHERE l.product.productId = :productId " +
-           "AND l.status = 'Active'")
+           "AND l.remainingQuantity > 0 " +
+           "ORDER BY l.purchaseDate ASC")
+    List<Lot> findLotsWithRemainingQuantityForFIFO(@Param("productId") Long productId);
+
+    // ─── Product queries ─────────────────────────────────────────────────────
+
+    /** All lots for a product, unordered. */
+    List<Lot> findByProductProductId(Long productId);
+
+    /** All lots for a product, newest first (price history). */
+    @Query("SELECT l FROM Lot l " +
+           "WHERE l.product.productId = :productId " +
+           "ORDER BY l.purchaseDate DESC, l.createdAt DESC")
+    List<Lot> findByProductProductIdOrderByPurchaseDateDesc(@Param("productId") Long productId);
+
+    /** FIFO-ordered lots by product and status. */
+    List<Lot> findByProductProductIdAndStatusOrderByPurchaseDateAsc(
+            Long productId, Lot.LotStatus status);
+
+    /** Distinct active purchase prices for a product (price-difference detection). */
+    @Query("SELECT DISTINCT l.purchasePrice FROM Lot l " +
+           "WHERE l.product.productId = :productId AND l.status = 'Active'")
     List<BigDecimal> findDistinctPricesByProduct(@Param("productId") Long productId);
-    
-    /**
-     * Check if lot number exists
-     */
-    Boolean existsByLotNumber(String lotNumber);
-    
-    /**
-     * Find lot by lot number
-     */
-    Optional<Lot> findByLotNumber(String lotNumber);
-    
-    // ============================================
-    // ADDED: GET TOTAL STOCK BY PRODUCT
-    // ============================================
-    
-    /**
-     * Get total available stock for a product (sum of all active lots)
-     * THIS IS THE MISSING METHOD
-     */
-    @Query("SELECT COALESCE(SUM(l.remainingQuantity), 0) " +
-           "FROM Lot l " +
-           "WHERE l.product.productId = :productId " +
-           "AND l.status = 'Active'")
+
+    // ─── Stock / value calculations ──────────────────────────────────────────
+
+    /** Total remaining stock across all active lots for a product. */
+    @Query("SELECT COALESCE(SUM(l.remainingQuantity), 0) FROM Lot l " +
+           "WHERE l.product.productId = :productId AND l.status = 'Active'")
     BigDecimal getTotalStockByProduct(@Param("productId") Long productId);
-    
-    // ============================================
-    // ADDITIONAL USEFUL METHODS
-    // ============================================
-    
-    /**
-     * Find lots by supplier
-     */
-    List<Lot> findBySupplierSupplierId(Long supplierId);
-    
-    /**
-     * Find lots by rack
-     */
-    List<Lot> findByRackRackId(Long rackId);
-    
-    /**
-     * Find lots by box
-     */
-    List<Lot> findByBoxBoxId(Long boxId);
-    
-    /**
-     * Find lots by status
-     */
-    List<Lot> findByStatus(Lot.LotStatus status);
-    
-    /**
-     * Count active lots
-     */
-    @Query("SELECT COUNT(l) FROM Lot l WHERE l.status = 'Active'")
-    Long countActiveLots();
-    
-    /**
-     * Calculate total inventory value
-     */
-    @Query("SELECT COALESCE(SUM(l.remainingQuantity * l.purchasePrice), 0) " +
-           "FROM Lot l " +
+
+    /** Inventory value for a single product (active lots only). */
+    @Query("SELECT COALESCE(SUM(l.remainingQuantity * l.purchasePrice), 0) FROM Lot l " +
+           "WHERE l.product.productId = :productId AND l.status = 'Active'")
+    BigDecimal calculateInventoryValueByProduct(@Param("productId") Long productId);
+
+    /** Total inventory value across all active lots. */
+    @Query("SELECT COALESCE(SUM(l.remainingQuantity * l.purchasePrice), 0) FROM Lot l " +
            "WHERE l.status = 'Active'")
     BigDecimal calculateTotalInventoryValue();
-    
+
+    /** Count of all active lots. */
+    @Query("SELECT COUNT(l) FROM Lot l WHERE l.status = 'Active'")
+    Long countActiveLots();
+
+    // ─── Lookup by identifiers ───────────────────────────────────────────────
+
+    Boolean existsByLotNumber(String lotNumber);
+
+    Optional<Lot> findByLotNumber(String lotNumber);
+
+    // ─── Location / supplier filters ─────────────────────────────────────────
+
+    /** All lots for a supplier (derived query, lazy fetch). */
+    List<Lot> findBySupplierSupplierId(Long supplierId);
+
+    List<Lot> findByRackRackId(Long rackId);
+
+    List<Lot> findByBoxBoxId(Long boxId);
+
+    List<Lot> findByStatus(Lot.LotStatus status);
+    Optional<Lot> findTopByProductProductIdOrderByCreatedAtDesc(Long productId);
+
     /**
-     * Calculate inventory value by product
+     * All lots for a supplier, newest first.
+     * Eagerly fetches product/category/rack/box to avoid N+1 in
+     * SupplierService.getSupplierProductSummary / getSupplierPurchaseDetails.
      */
-    @Query("SELECT COALESCE(SUM(l.remainingQuantity * l.purchasePrice), 0) " +
-           "FROM Lot l " +
-           "WHERE l.product.productId = :productId " +
-           "AND l.status = 'Active'")
-    BigDecimal calculateInventoryValueByProduct(@Param("productId") Long productId);
+    @Query("SELECT l FROM Lot l " +
+           "LEFT JOIN FETCH l.product p " +
+           "LEFT JOIN FETCH p.category " +
+           "LEFT JOIN FETCH l.rack " +
+           "LEFT JOIN FETCH l.box " +
+           "WHERE l.supplier.supplierId = :supplierId " +
+           "ORDER BY l.purchaseDate DESC")
+    List<Lot> findBySupplierSupplierIdWithFetch(@Param("supplierId") Long supplierId);
 }

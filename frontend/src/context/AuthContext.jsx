@@ -1,6 +1,5 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import { authApi } from '../api/authApi';
 
 const AuthContext = createContext();
 
@@ -16,42 +15,31 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
 
   // Check if token is expired
-  const isTokenExpired = (token) => {
-    if (!token) return true;
-    
+  const isTokenExpired = useCallback((tokenStr) => {
+    if (!tokenStr) return true;
+
     try {
-      // Decode JWT token (without verification)
-      const base64Url = token.split('.')[1];
+      const base64Url = tokenStr.split('.')[1];
       const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
       const jsonPayload = decodeURIComponent(
         atob(base64)
           .split('')
-          .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+          .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
           .join('')
       );
-      
+
       const { exp } = JSON.parse(jsonPayload);
-      
       if (!exp) return true;
-      
+
       // Check if token is expired (with 1 minute buffer)
       const currentTime = Date.now() / 1000;
-      const isExpired = exp < (currentTime + 60); // 60 seconds buffer
-      
-      if (isExpired) {
-        console.log('Token expired at:', new Date(exp * 1000));
-      }
-      
-      return isExpired;
-      
+      return exp < currentTime + 60;
     } catch (error) {
-      console.error('Error checking token expiry:', error);
       return true;
     }
-  };
+  }, []);
 
   // Initialize auth state from localStorage
   useEffect(() => {
@@ -59,12 +47,9 @@ export const AuthProvider = ({ children }) => {
     const storedUser = localStorage.getItem('user');
 
     if (storedToken && storedUser) {
-      // Check if token is expired
       if (isTokenExpired(storedToken)) {
-        console.log('Stored token is expired, clearing...');
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        toast.warning('Your session has expired. Please log in again.');
         setLoading(false);
         return;
       }
@@ -73,14 +58,13 @@ export const AuthProvider = ({ children }) => {
         setToken(storedToken);
         setUser(JSON.parse(storedUser));
       } catch (error) {
-        console.error('Error parsing stored user:', error);
         localStorage.removeItem('token');
         localStorage.removeItem('user');
       }
     }
-    
+
     setLoading(false);
-  }, []);
+  }, [isTokenExpired]);
 
   // Periodic token expiry check (every 5 minutes)
   useEffect(() => {
@@ -88,42 +72,68 @@ export const AuthProvider = ({ children }) => {
 
     const checkTokenExpiry = () => {
       if (isTokenExpired(token)) {
-        console.log('Token expired, logging out...');
-        logout();
-        toast.warning('Your session has expired. Please log in again.');
+        logoutCleanup();
       }
     };
 
-    // Check every 5 minutes
     const interval = setInterval(checkTokenExpiry, 5 * 60 * 1000);
-
-    // Check immediately
-    checkTokenExpiry();
-
     return () => clearInterval(interval);
-  }, [token]);
+  }, [token, isTokenExpired]);
 
-  const login = (userData, authToken) => {
-    // Check if new token is already expired
-    if (isTokenExpired(authToken)) {
-      toast.error('Received expired token. Please try logging in again.');
-      return false;
+  // ✅ FIX: login now calls the API and returns {success, message}
+  const login = async (credentials) => {
+    try {
+      const response = await authApi.login(credentials);
+      const data = response.data;
+
+      // Handle different response structures from backend
+      const authToken = data.token || data.data?.token;
+      const userData = data.user || data.data?.user || data.data;
+
+      if (!authToken) {
+        return { success: false, message: 'No token received from server' };
+      }
+
+      if (isTokenExpired(authToken)) {
+        return { success: false, message: 'Received expired token' };
+      }
+
+      // Build user object
+      const userObj = {
+        userId: userData?.userId || userData?.id,
+        username: userData?.username || credentials.username,
+        fullName: userData?.fullName || userData?.name || credentials.username,
+        email: userData?.email || '',
+        role: userData?.role || 'STORE_MANAGER',
+      };
+
+      setUser(userObj);
+      setToken(authToken);
+      localStorage.setItem('token', authToken);
+      localStorage.setItem('user', JSON.stringify(userObj));
+
+      return { success: true };
+    } catch (error) {
+      const message =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        'Login failed. Please check your credentials.';
+      return { success: false, message };
     }
-
-    setUser(userData);
-    setToken(authToken);
-    localStorage.setItem('token', authToken);
-    localStorage.setItem('user', JSON.stringify(userData));
-    
-    return true;
   };
 
-  const logout = () => {
+  // ✅ FIX: logout without useNavigate (no Router dependency)
+  const logoutCleanup = () => {
     setUser(null);
     setToken(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    navigate('/login');
+  };
+
+  const logout = () => {
+    logoutCleanup();
+    // Navigate via window.location to avoid useNavigate dependency
+    window.location.href = '/login';
   };
 
   const value = {
@@ -135,9 +145,5 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated: !!user && !!token && !isTokenExpired(token),
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

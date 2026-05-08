@@ -1,5 +1,6 @@
 package com.company.inventory.controller;
 
+import com.company.inventory.dto.request.BoxRequest;
 import com.company.inventory.dto.response.ApiResponse;
 import com.company.inventory.entity.Box;
 import com.company.inventory.entity.User;
@@ -57,12 +58,12 @@ public class BoxController {
     @PostMapping
     @Operation(summary = "Create box", description = "Create a new box")
     public ResponseEntity<ApiResponse<Box>> createBox(
-            @RequestParam Long rackId,
-            @RequestParam String boxNumber,
-            @RequestParam(required = false) String boxLabel,
+            @RequestBody BoxRequest req,
             Authentication authentication) {
         User currentUser = authService.getCurrentUser(authentication.getName());
-        Box box = boxService.createBox(rackId, boxNumber, boxLabel, currentUser);
+        Box box = boxService.createBox(
+                req.rackId(), req.boxNumber(), req.boxLabel(), currentUser
+        );
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Box created successfully", box));
     }
@@ -71,9 +72,8 @@ public class BoxController {
     @Operation(summary = "Update box", description = "Update an existing box")
     public ResponseEntity<ApiResponse<Box>> updateBox(
             @PathVariable Long id,
-            @RequestParam String boxNumber,
-            @RequestParam(required = false) String boxLabel) {
-        Box box = boxService.updateBox(id, boxNumber, boxLabel);
+            @RequestBody BoxRequest req) {
+        Box box = boxService.updateBox(id, req.boxNumber(), req.boxLabel());
         return ResponseEntity.ok(ApiResponse.success("Box updated successfully", box));
     }
 
@@ -82,13 +82,5 @@ public class BoxController {
     public ResponseEntity<ApiResponse<Void>> deleteBox(@PathVariable Long id) {
         boxService.deleteBox(id);
         return ResponseEntity.ok(ApiResponse.success("Box deleted successfully", null));
-    }
-
-    @PostMapping("/init-defaults")
-    @Operation(summary = "Initialize default boxes", description = "Create default boxes for all racks")
-    public ResponseEntity<ApiResponse<String>> initializeDefaultBoxes(Authentication authentication) {
-        User currentUser = authService.getCurrentUser(authentication.getName());
-        boxService.initializeDefaultBoxes(currentUser);
-        return ResponseEntity.ok(ApiResponse.success("Default boxes initialized", null));
     }
 }

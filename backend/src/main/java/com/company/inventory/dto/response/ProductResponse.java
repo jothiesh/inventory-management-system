@@ -23,11 +23,16 @@ public class ProductResponse {
     private String alternativeComponent;
     private String manufacturerPn;
     private BigDecimal unitPrice;
+
+    // ── NEW: HSN / GST ────────────────────────────────────────────
+    private String hsnCode;
+    private BigDecimal gstPercent;
+    // ─────────────────────────────────────────────────────────────
+
     private Integer minStockLevel;
     private String remarks;
     private Boolean isActive;
     
-    // Nested objects with proper data
     private CategoryInfo category;
     private SupplierInfo supplier;
     private RackInfo rack;
@@ -36,11 +41,7 @@ public class ProductResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     
-    // Nested classes for related entities
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
+    @Data @Builder @NoArgsConstructor @AllArgsConstructor
     public static class CategoryInfo {
         private Long categoryId;
         private String categoryCode;
@@ -48,10 +49,7 @@ public class ProductResponse {
         private String description;
     }
     
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
+    @Data @Builder @NoArgsConstructor @AllArgsConstructor
     public static class SupplierInfo {
         private Long supplierId;
         private String supplierCode;
@@ -61,10 +59,7 @@ public class ProductResponse {
         private String phone;
     }
     
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
+    @Data @Builder @NoArgsConstructor @AllArgsConstructor
     public static class RackInfo {
         private Long rackId;
         private String rackCode;
@@ -73,21 +68,15 @@ public class ProductResponse {
         private String location;
     }
     
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
+    @Data @Builder @NoArgsConstructor @AllArgsConstructor
     public static class BoxInfo {
         private Long boxId;
         private String boxLabel;
-        private String boxNumber;  // ✅ Changed from Integer to String
+        private String boxNumber;
     }
     
-    // Convert Product entity to ProductResponse
     public static ProductResponse fromEntity(Product product) {
-        if (product == null) {
-            return null;
-        }
+        if (product == null) return null;
         
         ProductResponseBuilder builder = ProductResponse.builder()
                 .productId(product.getProductId())
@@ -98,13 +87,16 @@ public class ProductResponse {
                 .alternativeComponent(product.getAlternativeComponent())
                 .manufacturerPn(product.getManufacturerPn())
                 .unitPrice(product.getUnitPrice())
+                // ── NEW: HSN / GST ─────────────────────────────────
+                .hsnCode(product.getHsnCode())
+                .gstPercent(product.getGstPercent())
+                // ────────────────────────────────────────────────────
                 .minStockLevel(product.getMinStockLevel())
                 .remarks(product.getRemarks())
                 .isActive(product.getIsActive())
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt());
         
-        // Map category if present
         if (product.getCategory() != null) {
             builder.category(CategoryInfo.builder()
                     .categoryId(product.getCategory().getCategoryId())
@@ -113,8 +105,6 @@ public class ProductResponse {
                     .description(product.getCategory().getDescription())
                     .build());
         }
-        
-        // Map supplier if present
         if (product.getSupplier() != null) {
             builder.supplier(SupplierInfo.builder()
                     .supplierId(product.getSupplier().getSupplierId())
@@ -125,20 +115,16 @@ public class ProductResponse {
                     .phone(product.getSupplier().getPhone())
                     .build());
         }
-        
-        // Map rack if present
         if (product.getRack() != null) {
             builder.rack(RackInfo.builder()
                     .rackId(product.getRack().getRackId())
-                    .rackCode(product.getRack().getRackCode() != null ? 
+                    .rackCode(product.getRack().getRackCode() != null ?
                              product.getRack().getRackCode() : product.getRack().getRackNumber())
                     .rackNumber(product.getRack().getRackNumber())
                     .rackName(product.getRack().getRackName())
                     .location(product.getRack().getLocation())
                     .build());
         }
-        
-        // Map box if present
         if (product.getBox() != null) {
             builder.box(BoxInfo.builder()
                     .boxId(product.getBox().getBoxId())

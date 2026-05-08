@@ -1,67 +1,75 @@
 package com.company.inventory.controller;
 
 import com.company.inventory.dto.response.ApiResponse;
-import com.company.inventory.service.InitService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
+import com.company.inventory.entity.User;
+import com.company.inventory.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/init")
 @RequiredArgsConstructor
-@Tag(name = "Initialization", description = "System initialization APIs")
+@Slf4j
 public class InitController {
 
-    private final InitService initService;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @PostMapping("/all")
-    @Operation(summary = "Initialize entire system", description = "Creates default users, categories, racks, and boxes")
-    public ResponseEntity<ApiResponse<Map<String, Integer>>> initializeAll() {
-        Map<String, Integer> result = new HashMap<>();
-        
-        int users = initService.initializeUsers();
-        int categories = initService.initializeCategories();
-        int racks = initService.initializeRacks();
-        int boxes = initService.initializeBoxes();
-        
-        result.put("users", users);
-        result.put("categories", categories);
-        result.put("racks", racks);
-        result.put("boxes", boxes);
-        
-        return ResponseEntity.ok(ApiResponse.success("System initialized successfully", result));
+    public ResponseEntity<?> initializeAll() {
+        try {
+            // Create/update Owner user
+            createOrUpdateUser("owner", "owner123", "Owner", "OWNER",
+                    "owner@inventrak.com", "9999999999");
+
+            // Create/update Store Manager user
+            createOrUpdateUser("manager", "manager123", "Store Manager", "STORE_MANAGER",
+                    "manager@inventrak.com", "8888888888");
+
+            log.info("✅ Default users initialized with BCrypt passwords");
+
+            return ResponseEntity.ok(new ApiResponse<>(true,
+                    "System initialized successfully. Default users created with encrypted passwords.", null));
+
+        } catch (Exception e) {
+            log.error("❌ Initialization failed: {}", e.getMessage());
+            return ResponseEntity.internalServerError()
+                    .body(new ApiResponse<>(false, "Initialization failed: " + e.getMessage(), null));
+        }
     }
 
-    @PostMapping("/users")
-    @Operation(summary = "Initialize users only", description = "Creates default owner and manager accounts")
-    public ResponseEntity<ApiResponse<Integer>> initializeUsers() {
-        int count = initService.initializeUsers();
-        return ResponseEntity.ok(ApiResponse.success("Users initialized: " + count, count));
-    }
+    private void createOrUpdateUser(String username, String rawPassword,
+                                     String fullName, String role,
+                                     String email, String phone) {
+        Optional<User> existing = userRepository.findByUsername(username);
 
-    @PostMapping("/categories")
-    @Operation(summary = "Initialize categories only", description = "Creates default product categories")
-    public ResponseEntity<ApiResponse<Integer>> initializeCategories() {
-        int count = initService.initializeCategories();
-        return ResponseEntity.ok(ApiResponse.success("Categories initialized: " + count, count));
-    }
+        User user;
+        if (existing.isPresent()) {
+            user = existing.get();
+            log.info("Updating existing user: {}", username);
+        } else {
+            user = new User();
+            log.info("Creating new user: {}", username);
+        }
 
-    @PostMapping("/racks")
-    @Operation(summary = "Initialize racks only", description = "Creates default storage racks")
-    public ResponseEntity<ApiResponse<Integer>> initializeRacks() {
-        int count = initService.initializeRacks();
-        return ResponseEntity.ok(ApiResponse.success("Racks initialized: " + count, count));
-    }
+        user.setUsername(username);
+        // ✅ FIX: Field is passwordHash, NOT password
+        user.setPasswordHash(passwordEncoder.encode(rawPassword));
+        user.setFullName(fullName);
+        // ✅ FIX: Enum is User.UserRole, NOT User.Role
+        user.setRole(User.UserRole.valueOf(role));
+        user.setEmail(email);
+        user.setPhone(phone);
+        user.setIsActive(true);
 
-    @PostMapping("/boxes")
-    @Operation(summary = "Initialize boxes only", description = "Creates default storage boxes in racks")
-    public ResponseEntity<ApiResponse<Integer>> initializeBoxes() {
-        int count = initService.initializeBoxes();
-        return ResponseEntity.ok(ApiResponse.success("Boxes initialized: " + count, count));
+        userRepository.save(user);
+        log.info("✅ User '{}' saved with BCrypt password", username);
     }
 }

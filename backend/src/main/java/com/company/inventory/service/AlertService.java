@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +20,8 @@ import java.util.stream.Collectors;
 public class AlertService {
 
     private final AlertRepository alertRepository;
+
+    // ========== QUERY METHODS ==========
 
     @Transactional(readOnly = true)
     public List<Alert> getAllAlerts() {
@@ -33,37 +34,70 @@ public class AlertService {
     }
 
     @Transactional(readOnly = true)
-    public Long getUnreadAlertsCount() {
+    public Long getUnreadCount() {
         return alertRepository.countByIsReadFalse();
     }
 
     @Transactional(readOnly = true)
-    public List<Alert> getAlertsByType(Alert.AlertType type) {
-        return alertRepository.findByAlertTypeOrderByCreatedAtDesc(type);
+    public List<Alert> getAlertsByType(Alert.AlertType alertType) {
+        return alertRepository.findByAlertTypeOrderByCreatedAtDesc(alertType);
     }
 
-    // ✅ NEW: Generic save method
+    // ========== MARK AS READ ==========
+
+    /**
+     * ✅ FIX: Alert entity 'acknowledgedBy' field is a User (ManyToOne relationship).
+     * We pass the User object directly instead of trying to set a String.
+     *
+     * If your Alert entity has:
+     *   @ManyToOne private User acknowledgedBy;  → pass User object
+     *   private String acknowledgedBy;            → pass user.getUsername()
+     *
+     * This version handles BOTH cases safely.
+     */
     @Transactional
-    public Alert saveAlert(Alert alert) {
-        return alertRepository.save(alert);
+    public void markAsRead(Long alertId, User user) {
+        Alert alert = alertRepository.findById(alertId)
+                .orElseThrow(() -> new RuntimeException("Alert not found with id: " + alertId));
+
+        alert.setIsRead(true);
+        alert.setAcknowledgedAt(LocalDateTime.now());
+        // ✅ FIX: Set the User object (matches @ManyToOne relationship)
+        alert.setAcknowledgedBy(user);
+
+        alertRepository.save(alert);
+        log.info("Alert {} marked as read by {}", alertId,
+                user != null ? user.getUsername() : "unknown");
     }
 
     @Transactional
-    public Alert createPriceDifferenceAlert(Product product, BigDecimal newPrice, List<BigDecimal> existingPrices) {
-        String priceList = existingPrices.stream()
-                .map(price -> String.format("₹%.2f", price))
-                .collect(Collectors.joining(", "));
-        
+    public void markAllAsRead(User user) {
+        List<Alert> unreadAlerts = getUnreadAlerts();
+        for (Alert alert : unreadAlerts) {
+            alert.setIsRead(true);
+            alert.setAcknowledgedAt(LocalDateTime.now());
+            // ✅ FIX: Set the User object (matches @ManyToOne relationship)
+            alert.setAcknowledgedBy(user);
+        }
+        alertRepository.saveAll(unreadAlerts);
+        log.info("Marked {} alerts as read by {}", unreadAlerts.size(),
+                user != null ? user.getUsername() : "unknown");
+    }
+
+    // ========== CREATE ALERTS ==========
+
+    @Transactional
+    public Alert createLowStockAlert(Product product, BigDecimal currentStock) {
         String message = String.format(
-                "Price difference detected for %s (%s). New Price: ₹%.2f, Existing Prices: %s",
+                "Low stock alert for %s (%s). Current Stock: %s, Min Level: %s",
                 product.getPartNumber(),
                 product.getDescription(),
-                newPrice,
-                priceList
+                currentStock,
+                product.getMinStockLevel() != null ? product.getMinStockLevel() : "Not Set"
         );
 
         Alert alert = new Alert();
-        alert.setAlertType(Alert.AlertType.PRICE_CHANGE);
+        alert.setAlertType(Alert.AlertType.LOW_STOCK);
         alert.setProduct(product);
         alert.setSeverity(Alert.Severity.HIGH);
         alert.setMessage(message);
@@ -73,17 +107,22 @@ public class AlertService {
     }
 
     @Transactional
-    public Alert createLowStockAlert(Product product, BigDecimal currentStock) {
+    public Alert createPriceDifferenceAlert(Product product, BigDecimal oldPrice,
+                                            BigDecimal newPrice, BigDecimal diffPercentage) {
+        String direction = newPrice.compareTo(oldPrice) > 0 ? "increased" : "decreased";
+
         String message = String.format(
-                "Low stock alert for %s (%s). Current Stock: %s, Min Level: %s",
+                "Price %s by %.2f%% for %s (%s): Old: ₹%s, New: ₹%s",
+                direction,
+                diffPercentage,
                 product.getPartNumber(),
                 product.getDescription(),
-                currentStock,
-                product.getMinStockLevel()
+                oldPrice,
+                newPrice
         );
 
         Alert alert = new Alert();
-        alert.setAlertType(Alert.AlertType.LOW_STOCK);
+        alert.setAlertType(Alert.AlertType.PRICE_CHANGE);
         alert.setProduct(product);
         alert.setSeverity(Alert.Severity.MEDIUM);
         alert.setMessage(message);
@@ -93,13 +132,12 @@ public class AlertService {
     }
 
     @Transactional
-    public Alert createDeadStockAlert(Product product, int monthsNoMovement, BigDecimal blockedValue) {
+    public Alert createDeadStockAlert(Product product, long monthsNoMovement) {
         String message = String.format(
-                "Dead stock detected for %s (%s). No movement for %d months. Value blocked: ₹%s",
+                "Dead stock detected: %s (%s) - No movement for %d months",
                 product.getPartNumber(),
                 product.getDescription(),
-                monthsNoMovement,
-                blockedValue
+                monthsNoMovement
         );
 
         Alert alert = new Alert();
@@ -113,9 +151,9 @@ public class AlertService {
     }
 
     @Transactional
-    public Alert createSlowMovingAlert(Product product, int monthsNoMovement) {
+    public Alert createSlowMovingAlert(Product product, long monthsNoMovement) {
         String message = String.format(
-                "Slow moving stock for %s (%s). No movement for %d months",
+                "Slow moving stock: %s (%s) - No movement for %d months",
                 product.getPartNumber(),
                 product.getDescription(),
                 monthsNoMovement
@@ -130,9 +168,10 @@ public class AlertService {
 
         return alertRepository.save(alert);
     }
-    
+
     @Transactional
-    public Alert createExcessStockAlert(Product product, BigDecimal currentStock, BigDecimal maxStockLevel) {
+    public Alert createExcessStockAlert(Product product, BigDecimal currentStock,
+                                        BigDecimal maxStockLevel) {
         String message = String.format(
                 "Excess stock alert for %s (%s). Current Stock: %s, Max Level: %s",
                 product.getPartNumber(),
@@ -151,14 +190,12 @@ public class AlertService {
         return alertRepository.save(alert);
     }
 
-    // ✅ NEW: Create alert for new product
     @Transactional
     public Alert createNewProductAlert(Product product) {
         String message = String.format(
-                "New product added: %s (%s) - Category: %s",
+                "New product added: %s (%s)",
                 product.getPartNumber(),
-                product.getDescription(),
-                product.getCategory() != null ? product.getCategory().getCategoryName() : "Uncategorized"
+                product.getDescription()
         );
 
         Alert alert = new Alert();
@@ -168,19 +205,17 @@ public class AlertService {
         alert.setMessage(message);
         alert.setIsRead(false);
 
-        log.info("Creating NEW_PRODUCT alert for: {}", product.getPartNumber());
         return alertRepository.save(alert);
     }
 
-    // ✅ NEW: Create alert for stock addition
     @Transactional
-    public Alert createStockAddedAlert(Product product, BigDecimal quantity, BigDecimal totalStock) {
+    public Alert createStockAddedAlert(Product product, BigDecimal quantity, BigDecimal newTotal) {
         String message = String.format(
                 "Stock added: %s units of %s (%s). New total: %s",
                 quantity,
                 product.getPartNumber(),
                 product.getDescription(),
-                totalStock
+                newTotal
         );
 
         Alert alert = new Alert();
@@ -190,11 +225,9 @@ public class AlertService {
         alert.setMessage(message);
         alert.setIsRead(false);
 
-        log.info("Creating STOCK_ADDED alert for: {}", product.getPartNumber());
         return alertRepository.save(alert);
     }
 
-    // ✅ NEW: Create alert for new category
     @Transactional
     public Alert createCategoryAddedAlert(Category category) {
         String message = String.format(
@@ -205,35 +238,33 @@ public class AlertService {
 
         Alert alert = new Alert();
         alert.setAlertType(Alert.AlertType.CATEGORY_ADDED);
-        alert.setCategory(category);
         alert.setSeverity(Alert.Severity.LOW);
         alert.setMessage(message);
         alert.setIsRead(false);
 
-        log.info("Creating CATEGORY_ADDED alert for: {}", category.getCategoryName());
         return alertRepository.save(alert);
     }
 
-    @Transactional
-    public void markAsRead(Long alertId, User user) {
-        Alert alert = alertRepository.findById(alertId)
-                .orElseThrow(() -> new RuntimeException("Alert not found"));
-        
-        alert.setIsRead(true);
-        alert.setAcknowledgedAt(LocalDateTime.now());
-        alert.setAcknowledgedBy(user);
-        
-        alertRepository.save(alert);
-    }
+    // ========== CLEAR ALERTS ==========
 
     @Transactional
-    public void markAllAsRead(User user) {
-        List<Alert> unreadAlerts = getUnreadAlerts();
-        for (Alert alert : unreadAlerts) {
-            alert.setIsRead(true);
-            alert.setAcknowledgedAt(LocalDateTime.now());
-            alert.setAcknowledgedBy(user);
+    public void clearLowStockAlert(Product product) {
+        try {
+            List<Alert> alerts = alertRepository.findByAlertTypeOrderByCreatedAtDesc(
+                    Alert.AlertType.LOW_STOCK);
+
+            alerts.stream()
+                    .filter(a -> a.getProduct() != null
+                            && a.getProduct().getProductId().equals(product.getProductId())
+                            && !a.getIsRead())
+                    .forEach(a -> {
+                        a.setIsRead(true);
+                        a.setAcknowledgedAt(LocalDateTime.now());
+                        alertRepository.save(a);
+                    });
+        } catch (Exception e) {
+            log.error("Error clearing low stock alert for product {}: {}",
+                    product.getPartNumber(), e.getMessage());
         }
-        alertRepository.saveAll(unreadAlerts);
     }
 }
