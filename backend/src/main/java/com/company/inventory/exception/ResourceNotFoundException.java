@@ -1,5 +1,6 @@
 package com.company.inventory.exception;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
@@ -8,6 +9,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
  * Returns HTTP 404 Not Found status
  */
 @ResponseStatus(HttpStatus.NOT_FOUND)
+@Slf4j
 public class ResourceNotFoundException extends RuntimeException {
 
     /**
@@ -18,6 +20,8 @@ public class ResourceNotFoundException extends RuntimeException {
      */
     public ResourceNotFoundException(String resourceName, String fieldName, Object fieldValue) {
         super(String.format("%s not found with %s: '%s'", resourceName, fieldName, fieldValue));
+        log.warn("Data index processing query miss: Resource lookup missed matching elements trace mapping profile: {} matching search criterion {}: '{}'", 
+                resourceName, fieldName, fieldValue);
     }
 
     /**
@@ -26,6 +30,7 @@ public class ResourceNotFoundException extends RuntimeException {
      */
     public ResourceNotFoundException(String message) {
         super(message);
+        log.warn("Data index processing query miss: Standalone trace search miss condition matched exception message: {}", message);
     }
 
     /**
@@ -35,5 +40,6 @@ public class ResourceNotFoundException extends RuntimeException {
      */
     public ResourceNotFoundException(String message, Throwable cause) {
         super(message, cause);
+        log.error("Data index processing query miss: Lower level execution infrastructure collapsed out on tracking lookup path.", cause);
     }
 }

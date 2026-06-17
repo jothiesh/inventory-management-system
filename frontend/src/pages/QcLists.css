@@ -1,0 +1,424 @@
+/* ════════════════════════════════════════════════
+   QC LISTS — Shared CSS
+   Used by: QcApproved, QcRejected, QcInspectionHistory
+   ════════════════════════════════════════════════ */
+
+.qcl-page {
+  padding: 20px 24px 40px;
+  background: #f5f7fb;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Spinner ── */
+.qcl-spinner {
+  width: 36px; height: 36px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #4f46e5;
+  border-radius: 50%;
+  animation: qcl-spin-anim 0.7s linear infinite;
+}
+@keyframes qcl-spin-anim { to { transform: rotate(360deg); } }
+.qcl-spin { animation: qcl-spin-anim 0.7s linear infinite; }
+
+/* ── HEADER ── */
+.qcl-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  padding: 16px 22px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.qcl-header-left { display: flex; align-items: center; gap: 14px; }
+.qcl-header-icon {
+  width: 46px; height: 46px;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; flex-shrink: 0;
+}
+.qcl-icon-approved { background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 4px 12px rgba(16,185,129,0.3); }
+.qcl-icon-rejected { background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 4px 12px rgba(239,68,68,0.3); }
+.qcl-icon-history  { background: linear-gradient(135deg, #4f46e5, #3730a3); box-shadow: 0 4px 12px rgba(79,70,229,0.3); }
+.qcl-title {
+  font-size: 20px; font-weight: 800; color: #0f172a;
+  margin: 0 0 2px; letter-spacing: -0.3px;
+}
+.qcl-subtitle { font-size: 12px; color: #64748b; margin: 0; }
+.qcl-btn-refresh {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #f1f5f9; border: 1.5px solid #e2e8f0; color: #475569;
+  padding: 8px 16px; border-radius: 8px;
+  font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+  transition: all 0.15s;
+}
+.qcl-btn-refresh:hover:not(:disabled) { background: #e0e7ff; color: #4f46e5; }
+.qcl-btn-refresh:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── SUMMARY STATS ── */
+.qcl-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.qcl-summary-stat {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.qcl-summary-stat svg { color: #4f46e5; flex-shrink: 0; }
+.qcl-summary-stat div { display: flex; flex-direction: column; gap: 1px; }
+.qcl-summary-stat strong { font-size: 20px; font-weight: 800; color: #0f172a; line-height: 1; }
+.qcl-summary-stat span { font-size: 11px; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+.qcl-stat-approved svg, .qcl-stat-approved strong { color: #059669; }
+.qcl-stat-rejected svg, .qcl-stat-rejected strong { color: #dc2626; }
+.qcl-filter-tab { transition: all 0.15s; }
+.qcl-filter-tab:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,0.06); }
+
+/* ── CARD ── */
+.qcl-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  overflow: hidden;
+}
+
+/* ── SEARCH ── */
+.qcl-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.qcl-search-icon { color: #94a3b8; flex-shrink: 0; }
+.qcl-search-input {
+  flex: 1;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: #fafbff;
+  outline: none;
+  font-family: inherit;
+  color: #1e293b;
+  transition: border-color 0.15s;
+}
+.qcl-search-input:focus { border-color: #4f46e5; background: #fff; }
+.qcl-search-clear {
+  background: #e2e8f0; border: none; border-radius: 50%;
+  width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: #64748b;
+}
+
+/* ── TABLE ── */
+.qcl-table-wrap { overflow-x: auto; }
+.qcl-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.qcl-table thead { background: #f8fafc; }
+.qcl-table th {
+  padding: 11px 12px;
+  text-align: left;
+  font-size: 10px; font-weight: 800; color: #475569;
+  text-transform: uppercase; letter-spacing: 0.4px;
+  border-bottom: 2px solid #e2e8f0;
+  border-right: 1px solid #d1d9e0;   /* ★ column separator */
+  white-space: nowrap;
+}
+.qcl-table th:last-child { border-right: none; }
+.qcl-table th.num { text-align: right; }
+.qcl-th-accepted { color: #059669 !important; }
+.qcl-th-rejected { color: #dc2626 !important; }
+.qcl-th-dl { width: 130px; text-align: center !important; }
+
+.qcl-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  border-right: 1px solid #e2e8f0;   /* ★ column separator lines */
+  vertical-align: middle;
+}
+.qcl-table td:last-child { border-right: none; }
+.qcl-table td.num { text-align: right; font-family: monospace; font-weight: 700; }
+
+.qcl-row { transition: background 0.12s; }
+.qcl-row:hover { background: #fafbff !important; }
+.qcl-row-approved:hover { background: #f0fdf4 !important; }
+.qcl-row-rejected:hover { background: #fef2f2 !important; }
+
+.qcl-row-num { color: #94a3b8; font-weight: 700; font-size: 11px; text-align: center !important; }
+.qcl-batch-ref { font-family: monospace; font-weight: 700; color: #4f46e5; font-size: 12px; display: inline-flex; align-items: center; gap: 3px; }
+.qcl-cat-badge { display: inline-block; background: #e0e7ff; color: #3730a3; padding: 3px 9px; border-radius: 5px; font-size: 11px; font-weight: 700; }
+.qcl-mono { font-family: monospace; }
+.qcl-date { font-size: 12px; color: #64748b; }
+.qcl-dim  { color: #cbd5e1; }
+.qcl-num-approved { color: #059669; }
+.qcl-num-rejected { color: #dc2626; }
+.qcl-remarks { font-size: 12px; color: #475569; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── DOWNLOAD BUTTONS ── */
+.qcl-dl-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: center;
+}
+.qcl-dl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  border: none;
+  color: #fff;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.qcl-dl-btn:hover:not(:disabled):not(.disabled) {
+  transform: translateY(-1px);
+  filter: brightness(0.88);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+}
+.qcl-dl-btn:disabled, .qcl-dl-btn.disabled {
+  opacity: 0.35; cursor: not-allowed; transform: none !important; filter: none !important;
+}
+.qcl-dl-btn.pdf {
+  background: #ef4444 !important;
+  color: #fff !important;
+  border: none !important;
+  box-shadow: 0 2px 6px rgba(239,68,68,0.35);
+}
+.qcl-dl-btn.pdf:hover:not(:disabled) {
+  background: #dc2626 !important;
+  box-shadow: 0 4px 10px rgba(239,68,68,0.4);
+}
+
+.qcl-dl-btn.excel {
+  background: #217346 !important;
+  color: #fff !important;
+  border: none !important;
+  box-shadow: 0 2px 6px rgba(33,115,70,0.35);
+}
+.qcl-dl-btn.excel:hover:not(:disabled) {
+  background: #1a5c38 !important;
+  box-shadow: 0 4px 10px rgba(33,115,70,0.4);
+}
+
+/* ── EMPTY ── */
+.qcl-empty {
+  padding: 50px 30px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #94a3b8;
+}
+.qcl-empty p { font-size: 14px; margin: 0; }
+
+/* ── PAGINATION ── */
+.qcl-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-top: 1px solid #f1f5f9;
+  background: #f8fafc;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.qcl-pg-info { font-size: 12px; color: #64748b; font-weight: 600; }
+.qcl-pg-controls { display: flex; align-items: center; gap: 4px; }
+.qcl-pg-controls button {
+  min-width: 32px; height: 32px;
+  background: #fff; border: 1.5px solid #e2e8f0; border-radius: 6px;
+  font-size: 13px; font-weight: 700; color: #475569;
+  cursor: pointer; transition: all 0.15s; display: flex; align-items: center; justify-content: center; padding: 0 6px;
+}
+.qcl-pg-controls button:hover:not(:disabled) { background: #e0e7ff; border-color: #c7d2fe; color: #4f46e5; }
+.qcl-pg-controls button:disabled { opacity: 0.4; cursor: not-allowed; }
+.qcl-pg-current {
+  background: #4f46e5 !important; color: #fff !important;
+  border-color: #4f46e5 !important;
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 768px) {
+  .qcl-page { padding: 14px 12px 30px; }
+  .qcl-header { flex-direction: column; align-items: flex-start; }
+  .qcl-summary { grid-template-columns: 1fr 1fr; }
+}
+
+/* ── FORCE DOWNLOAD BUTTON COLORS (high specificity override) ── */
+.qcl-page .qcl-dl-btn.pdf,
+.qcl-card .qcl-dl-btn.pdf,
+table .qcl-dl-btn.pdf {
+  background-color: #ef4444 !important;
+  color: #ffffff !important;
+  border: 1.5px solid #dc2626 !important;
+}
+.qcl-page .qcl-dl-btn.excel,
+.qcl-card .qcl-dl-btn.excel,
+table .qcl-dl-btn.excel {
+  background-color: #217346 !important;
+  color: #ffffff !important;
+  border: 1.5px solid #1a5c38 !important;
+}
+
+/* ════════════════════════════════════════════════
+   DATE FILTER — compact single row (QcHistory page)
+   ════════════════════════════════════════════════ */
+.qcl-date-filter-card {
+  padding: 10px 18px;
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+}
+
+/* ★ Single row — no wrapping */
+.qcl-date-filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap !important;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.qcl-date-icon { color: #4f46e5; flex-shrink: 0; }
+
+.qcl-date-label {
+  font-size: 12px; font-weight: 700;
+  color: #475569; white-space: nowrap; flex-shrink: 0;
+}
+
+/* ★ Date inputs: small fixed width */
+.qcl-date-input {
+  width: 140px !important;
+  max-width: 140px !important;
+  height: 32px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #1e293b;
+  background: #fafbff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 7px;
+  outline: none;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+.qcl-date-input:focus { border-color: #4f46e5; background: #fff; }
+
+/* ★ Decision dropdown: small fixed width */
+.qcl-decision-select {
+  width: 150px !important;
+  max-width: 150px !important;
+  height: 32px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #1e293b;
+  background: #fff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 7px;
+  cursor: pointer;
+  outline: none;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+.qcl-decision-select:focus { border-color: #4f46e5; }
+
+/* Apply / Clear buttons */
+.qcl-btn-apply {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 32px; padding: 0 14px;
+  background: #4f46e5; color: #fff; border: none;
+  border-radius: 7px; font-size: 12px; font-weight: 700;
+  cursor: pointer; font-family: inherit; flex-shrink: 0;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.qcl-btn-apply:hover { background: #3730a3; }
+
+.qcl-btn-clear {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 32px; padding: 0 12px;
+  background: #fee2e2; color: #dc2626;
+  border: 1.5px solid #fca5a5;
+  border-radius: 7px; font-size: 12px; font-weight: 700;
+  cursor: pointer; font-family: inherit; flex-shrink: 0;
+  white-space: nowrap;
+}
+.qcl-btn-clear:hover { background: #fecaca; }
+
+/* Quick preset pills */
+.qcl-date-presets {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px dashed #e2e8f0;
+  flex-wrap: wrap;
+}
+.qcl-date-presets button {
+  height: 26px; padding: 0 11px;
+  background: #f1f5f9; border: 1.5px solid #e2e8f0;
+  border-radius: 20px; font-size: 11px; font-weight: 600;
+  color: #475569; cursor: pointer; font-family: inherit;
+  white-space: nowrap; transition: all 0.15s;
+}
+.qcl-date-presets button:hover {
+  background: #e0e7ff; border-color: #c7d2fe; color: #4f46e5;
+}
+
+/* ════════════════════════════════════════════════
+   TABLE COLUMN SEPARATOR LINES
+   Add vertical borders between columns
+   ════════════════════════════════════════════════ */
+.qcl-table thead th {
+  border-right: 1px solid #e2e8f0 !important;
+}
+.qcl-table thead th:last-child {
+  border-right: none !important;
+}
+.qcl-table tbody td {
+  border-right: 1px solid #f1f5f9 !important;
+}
+.qcl-table tbody td:last-child {
+  border-right: none !important;
+}
+
+/* Row hover — keep column lines visible */
+.qcl-row:hover td {
+  border-right: 1px solid #e9edf5 !important;
+}
+.qcl-row:hover td:last-child {
+  border-right: none !important;
+}
+
+/* Stronger bottom border under header */
+.qcl-table thead tr {
+  border-bottom: 2px solid #cbd5e1 !important;
+}
+
+/* Alternating row background */
+.qcl-table tbody tr:nth-child(even) td {
+  background: #fafbff;
+}
+.qcl-table tbody tr:nth-child(even):hover td {
+  background: #f1f5f9 !important;
+}

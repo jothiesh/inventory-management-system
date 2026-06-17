@@ -15,6 +15,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/alerts")
@@ -26,45 +27,41 @@ public class AlertController {
     private final AlertService alertService;
     private final AuthService authService;
 
+    // ── existing endpoints ────────────────────────────────────────
+
     @GetMapping
     @PreAuthorize("hasAuthority('OWNER')")
-    @Operation(summary = "Get all alerts", description = "Retrieve all alerts (Owner only)")
+    @Operation(summary = "Get all alerts")
     public ResponseEntity<ApiResponse<List<Alert>>> getAllAlerts() {
-        List<Alert> alerts = alertService.getAllAlerts();
-        return ResponseEntity.ok(ApiResponse.success("Alerts retrieved successfully", alerts));
+        return ResponseEntity.ok(ApiResponse.success("Alerts retrieved", alertService.getAllAlerts()));
     }
 
     @GetMapping("/unread")
     @PreAuthorize("hasAuthority('OWNER')")
-    @Operation(summary = "Get unread alerts", description = "Retrieve unread alerts (Owner only)")
+    @Operation(summary = "Get unread alerts")
     public ResponseEntity<ApiResponse<List<Alert>>> getUnreadAlerts() {
-        List<Alert> alerts = alertService.getUnreadAlerts();
-        return ResponseEntity.ok(ApiResponse.success("Unread alerts retrieved successfully", alerts));
+        return ResponseEntity.ok(ApiResponse.success("Unread alerts retrieved", alertService.getUnreadAlerts()));
     }
 
     @GetMapping("/unread/count")
     @PreAuthorize("hasAuthority('OWNER')")
-    @Operation(summary = "Get unread alerts count", description = "Get count of unread alerts (Owner only)")
+    @Operation(summary = "Get unread alerts count")
     public ResponseEntity<ApiResponse<Long>> getUnreadAlertsCount() {
-        // Changed from getUnreadAlertsCount() to getUnreadCount()
-        Long count = alertService.getUnreadCount(); 
-        return ResponseEntity.ok(ApiResponse.success("Unread count retrieved successfully", count));
+        return ResponseEntity.ok(ApiResponse.success("Unread count retrieved", alertService.getUnreadCount()));
     }
 
     @GetMapping("/type/{type}")
     @PreAuthorize("hasAuthority('OWNER')")
-    @Operation(summary = "Get alerts by type", description = "Retrieve alerts by type (Owner only)")
+    @Operation(summary = "Get alerts by type")
     public ResponseEntity<ApiResponse<List<Alert>>> getAlertsByType(@PathVariable Alert.AlertType type) {
-        List<Alert> alerts = alertService.getAlertsByType(type);
-        return ResponseEntity.ok(ApiResponse.success("Alerts retrieved successfully", alerts));
+        return ResponseEntity.ok(ApiResponse.success("Alerts retrieved", alertService.getAlertsByType(type)));
     }
 
     @PutMapping("/{alertId}/read")
     @PreAuthorize("hasAuthority('OWNER')")
-    @Operation(summary = "Mark alert as read", description = "Mark a specific alert as read (Owner only)")
+    @Operation(summary = "Mark alert as read")
     public ResponseEntity<ApiResponse<String>> markAsRead(
-            @PathVariable Long alertId,
-            Authentication authentication) {
+            @PathVariable Long alertId, Authentication authentication) {
         User currentUser = authService.getCurrentUser(authentication.getName());
         alertService.markAsRead(alertId, currentUser);
         return ResponseEntity.ok(ApiResponse.success("Alert marked as read", null));
@@ -72,10 +69,38 @@ public class AlertController {
 
     @PutMapping("/read-all")
     @PreAuthorize("hasAuthority('OWNER')")
-    @Operation(summary = "Mark all alerts as read", description = "Mark all alerts as read (Owner only)")
+    @Operation(summary = "Mark all alerts as read")
     public ResponseEntity<ApiResponse<String>> markAllAsRead(Authentication authentication) {
         User currentUser = authService.getCurrentUser(authentication.getName());
         alertService.markAllAsRead(currentUser);
         return ResponseEntity.ok(ApiResponse.success("All alerts marked as read", null));
+    }
+
+    // ── Stock OUT alerts — Owner + Store Manager ──────────────────
+
+    @GetMapping("/stock-out")
+    @PreAuthorize("hasAnyAuthority('OWNER','STORE_MANAGER')")
+    @Operation(summary = "Get stock out alerts")
+    public ResponseEntity<ApiResponse<List<Alert>>> getStockOutAlerts() {
+        return ResponseEntity.ok(ApiResponse.success("Stock out alerts retrieved",
+                alertService.getStockOutAlerts()));
+    }
+
+    @GetMapping("/stock-out/unread/count")
+    @PreAuthorize("hasAnyAuthority('OWNER','STORE_MANAGER')")
+    @Operation(summary = "Unread stock-out count for nav badge")
+    public ResponseEntity<ApiResponse<Map<String, Long>>> getStockOutUnreadCount() {
+        long count = alertService.getStockOutAlerts()
+                .stream().filter(a -> !a.getIsRead()).count();
+        return ResponseEntity.ok(ApiResponse.success("Count", Map.of("count", count)));
+    }
+
+    @PutMapping("/stock-out/read-all")
+    @PreAuthorize("hasAnyAuthority('OWNER','STORE_MANAGER')")
+    @Operation(summary = "Mark all stock-out alerts as read")
+    public ResponseEntity<ApiResponse<String>> markAllStockOutAsRead(Authentication authentication) {
+        User currentUser = authService.getCurrentUser(authentication.getName());
+        alertService.markAllStockOutAsRead(currentUser);
+        return ResponseEntity.ok(ApiResponse.success("All stock-out alerts marked as read", null));
     }
 }

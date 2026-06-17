@@ -24,6 +24,7 @@ public class InitController {
 
     @PostMapping("/all")
     public ResponseEntity<?> initializeAll() {
+        log.info("REST Request received: POST /api/init/all | Starting system default users initialization script.");
         try {
             // Create/update Owner user
             createOrUpdateUser("owner", "owner123", "Owner", "OWNER",
@@ -33,30 +34,30 @@ public class InitController {
             createOrUpdateUser("manager", "manager123", "Store Manager", "STORE_MANAGER",
                     "manager@inventrak.com", "8888888888");
 
-            log.info("✅ Default users initialized with BCrypt passwords");
+            log.info("✅ Default users initialization routine completed successfully.");
 
             return ResponseEntity.ok(new ApiResponse<>(true,
                     "System initialized successfully. Default users created with encrypted passwords.", null));
 
         } catch (Exception e) {
-            log.error("❌ Initialization failed: {}", e.getMessage());
+            log.error("❌ Initialization pipeline failure: ", e);
             return ResponseEntity.internalServerError()
                     .body(new ApiResponse<>(false, "Initialization failed: " + e.getMessage(), null));
         }
     }
 
     private void createOrUpdateUser(String username, String rawPassword,
-                                     String fullName, String role,
-                                     String email, String phone) {
+                                   String fullName, String role,
+                                   String email, String phone) {
         Optional<User> existing = userRepository.findByUsername(username);
 
         User user;
         if (existing.isPresent()) {
             user = existing.get();
-            log.info("Updating existing user: {}", username);
+            log.debug("User matching context identity '{}' already exists. Rewriting profile metadata properties.", username);
         } else {
             user = new User();
-            log.info("Creating new user: {}", username);
+            log.debug("No pre-existing record found for username '{}'. Creating fresh entity row structure.", username);
         }
 
         user.setUsername(username);
@@ -70,6 +71,6 @@ public class InitController {
         user.setIsActive(true);
 
         userRepository.save(user);
-        log.info("✅ User '{}' saved with BCrypt password", username);
+        log.info("✅ User entity snapshot matching profile token '{}' successfully written to schema context.", username);
     }
 }

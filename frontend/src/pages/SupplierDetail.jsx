@@ -38,7 +38,6 @@ const SupplierDetail = () => {
       .filter(Boolean).some(f => f.toLowerCase().includes(q));
   });
 
-  // Stats
   const totalSpent  = details.reduce((s, d) => s + Number(d.totalValue || 0), 0);
   const totalQty    = details.reduce((s, d) => s + Number(d.quantity   || 0), 0);
   const uniqueProds = new Set(details.map(d => d.productId)).size;
@@ -54,7 +53,7 @@ const SupplierDetail = () => {
   return (
     <div className="sd-page">
 
-      {/* Back + Title */}
+      {/* Back */}
       <div className="sd-topbar">
         <button className="sd-back-btn" onClick={() => navigate('/suppliers')}>
           <FiArrowLeft size={16} /> Back to Suppliers
@@ -72,11 +71,15 @@ const SupplierDetail = () => {
               {supplier.contactPerson && <span>👤 {supplier.contactPerson}</span>}
               {supplier.phone && <span>📞 {supplier.phone}</span>}
               {supplier.email && <span>✉️ {supplier.email}</span>}
+              {/* ✅ GSTN badge */}
+              {supplier.gstnNumber && (
+                <span className="sd-info-gstn">🏢 GSTN: <strong>{supplier.gstnNumber}</strong></span>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Stats row */}
+        {/* Stats */}
         <div className="sd-stats">
           <div className="sd-stat">
             <FiPackage size={18} className="sd-stat-icon" />
@@ -118,7 +121,7 @@ const SupplierDetail = () => {
         <span className="sd-search-count">{filtered.length} entries</span>
       </div>
 
-      {/* Purchase History Table - latest first */}
+      {/* Purchase History Table */}
       <div className="sd-table-wrap">
         <table className="sd-table">
           <thead>

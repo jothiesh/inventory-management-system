@@ -65,7 +65,7 @@ public class StockMovement {
 
     @Column(columnDefinition = "TEXT")
     private String notes;
-
+//
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
     @JsonIgnore  // ✅ FIX
@@ -74,7 +74,11 @@ public class StockMovement {
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;
+    @Column(name = "transaction_group_id", length = 36)
+    private String transactionGroupId;
 
+    @Column(name = "reversed", nullable = false)
+    private boolean reversed = false;
     public enum MovementType { IN, OUT }
-    public enum TransactionType { Purchase, Sale, Production, Damage, Scrap, Transfer }
+    public enum TransactionType { Purchase, Production, Sale, Damage, Scrap, Reversal, Semi_Finish, Other }
 }

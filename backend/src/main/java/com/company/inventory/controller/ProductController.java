@@ -9,10 +9,13 @@ import com.company.inventory.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -25,9 +28,8 @@ public class ProductController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<ProductResponse>>> getAllProducts() {
-        log.info("Getting all products");
-        List<Product> products = productService.getAllProducts();
-        List<ProductResponse> responses = products.stream()
+        log.info("REST Request received: GET /api/products");
+        List<ProductResponse> responses = productService.getAllProducts().stream()
                 .map(ProductResponse::fromEntity)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.success("Products retrieved", responses));
@@ -35,9 +37,8 @@ public class ProductController {
 
     @GetMapping("/active")
     public ResponseEntity<ApiResponse<List<ProductResponse>>> getActiveProducts() {
-        log.info("Getting active products");
-        List<Product> products = productService.getActiveProducts();
-        List<ProductResponse> responses = products.stream()
+        log.info("REST Request received: GET /api/products/active");
+        List<ProductResponse> responses = productService.getActiveProducts().stream()
                 .map(ProductResponse::fromEntity)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.success("Active products retrieved", responses));
@@ -45,16 +46,15 @@ public class ProductController {
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<ProductResponse>> getProductById(@PathVariable Long id) {
-        log.info("Getting product by ID: {}", id);
+        log.info("REST Request received: GET /api/products/{}", id);
         Product product = productService.getProductById(id);
         return ResponseEntity.ok(ApiResponse.success("Product retrieved", ProductResponse.fromEntity(product)));
     }
 
     @GetMapping("/category/{categoryId}")
     public ResponseEntity<ApiResponse<List<ProductResponse>>> getProductsByCategory(@PathVariable Long categoryId) {
-        log.info("Getting products by category: {}", categoryId);
-        List<Product> products = productService.getProductsByCategory(categoryId);
-        List<ProductResponse> responses = products.stream()
+        log.info("REST Request received: GET /api/products/category/{}", categoryId);
+        List<ProductResponse> responses = productService.getProductsByCategory(categoryId).stream()
                 .map(ProductResponse::fromEntity)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.success("Products retrieved", responses));
@@ -62,9 +62,8 @@ public class ProductController {
 
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<List<ProductResponse>>> searchProducts(@RequestParam String keyword) {
-        log.info("Searching products with keyword: {}", keyword);
-        List<Product> products = productService.searchProducts(keyword);
-        List<ProductResponse> responses = products.stream()
+        log.info("REST Request received: GET /api/products/search?keyword={}", keyword);
+        List<ProductResponse> responses = productService.searchProducts(keyword).stream()
                 .map(ProductResponse::fromEntity)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.success("Search results", responses));
@@ -74,15 +73,10 @@ public class ProductController {
     public ResponseEntity<ApiResponse<ProductResponse>> createProduct(
             @RequestBody ProductRequest request,
             @AuthenticationPrincipal User currentUser) {
-
-        log.info("Creating product: {}", request.getPartNumber());
-
-        // ✅ Only category is required — partNumber and description are optional
+        log.info("REST Request received: POST /api/products | Part Number: '{}'", request.getPartNumber());
         if (request.getCategoryId() == null) {
-            return ResponseEntity.badRequest()
-                    .body(ApiResponse.error("Category is required"));
+            return ResponseEntity.badRequest().body(ApiResponse.error("Category is required"));
         }
-
         Product product = productService.createProduct(request, currentUser);
         return ResponseEntity.ok(ApiResponse.success("Product created successfully", ProductResponse.fromEntity(product)));
     }
@@ -92,22 +86,38 @@ public class ProductController {
             @PathVariable Long id,
             @RequestBody ProductRequest request,
             @AuthenticationPrincipal User currentUser) {
-
-        log.info("Updating product ID: {}", id);
-
+        log.info("REST Request received: PUT /api/products/{}", id);
         if (request.getCategoryId() == null) {
-            return ResponseEntity.badRequest()
-                    .body(ApiResponse.error("Category is required"));
+            return ResponseEntity.badRequest().body(ApiResponse.error("Category is required"));
         }
-
         Product product = productService.updateProduct(id, request, currentUser);
         return ResponseEntity.ok(ApiResponse.success("Product updated successfully", ProductResponse.fromEntity(product)));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteProduct(@PathVariable Long id) {
-        log.info("Deleting product ID: {}", id);
+        log.warn("REST Request received: DELETE /api/products/{}", id);
         productService.deleteProduct(id);
         return ResponseEntity.ok(ApiResponse.success("Product deleted successfully", null));
+    }
+
+    // ── PATCH: update min stock level inline (from CurrentStock page) ─────────
+    @PatchMapping("/{id}/min-stock-level")
+    @PreAuthorize("hasAnyAuthority('OWNER','STORE_MANAGER','ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<ProductResponse>> updateMinStockLevel(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body) {
+
+        Object raw = body.get("minLevel");
+        BigDecimal minLevel = raw != null ? new BigDecimal(raw.toString()) : BigDecimal.ZERO;
+
+        Product product = productService.getProductById(id);
+        product.setMinStockLevel(
+            minLevel.compareTo(BigDecimal.ZERO) > 0 ? minLevel.intValue() : null
+        );
+        Product saved = productService.saveProduct(product);
+
+        log.info("PATCH /api/products/{}/min-stock-level → {}", id, minLevel);
+        return ResponseEntity.ok(ApiResponse.success("Min stock level updated", ProductResponse.fromEntity(saved)));
     }
 }

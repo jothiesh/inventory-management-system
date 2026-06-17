@@ -51,4 +51,7 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, Lo
            "WHERE sm.movementType = 'OUT' " +
            "GROUP BY sm.product.productId")
     List<Object[]> findProductIdAndTotalStockOut();
+    
+    List<StockMovement> findByTransactionGroupIdOrderByCreatedAtAsc(String transactionGroupId);
+    
 }

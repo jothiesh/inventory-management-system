@@ -1,5 +1,6 @@
 package com.company.inventory.config;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.TaskScheduler;
@@ -17,6 +18,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
  */
 @Configuration
 @EnableScheduling
+@Slf4j
 public class SchedulerConfig {
 
     /**
@@ -25,22 +27,30 @@ public class SchedulerConfig {
      */
     @Bean
     public TaskScheduler taskScheduler() {
+        log.info("Initializing ThreadPoolTaskScheduler thread pool orchestration configuration layer.");
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
         
         // Set pool size (number of concurrent scheduled tasks)
-        scheduler.setPoolSize(5);
+        int poolSize = 5;
+        log.debug("Configuring scheduler concurrent core pool dimensions boundary size: {}", poolSize);
+        scheduler.setPoolSize(poolSize);
         
         // Set thread name prefix for easy identification in logs
-        scheduler.setThreadNamePrefix("inventory-scheduler-");
+        String threadPrefix = "inventory-scheduler-";
+        log.debug("Configuring scheduler identity runtime naming convention prefix to: '{}'", threadPrefix);
+        scheduler.setThreadNamePrefix(threadPrefix);
         
         // Wait for tasks to complete on shutdown
         scheduler.setWaitForTasksToCompleteOnShutdown(true);
         
         // Timeout for waiting (in seconds)
-        scheduler.setAwaitTerminationSeconds(60);
+        int awaitTerminationSeconds = 60;
+        scheduler.setAwaitTerminationSeconds(awaitTerminationSeconds);
+        log.trace("Scheduler graceful lifecycle parameters applied. Termination ceiling timeout: {}s", awaitTerminationSeconds);
         
         // Initialize the scheduler
         scheduler.initialize();
+        log.info("ThreadPoolTaskScheduler cluster initialized successfully and spawned inside container execution loops.");
         
         return scheduler;
     }

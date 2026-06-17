@@ -44,11 +44,19 @@ const EMPTY_FORM = {
   productId: null, partNumber: '', description: '',
   packageType: '', manufacturerPn: '', unitPrice: '',
   hsnCode: '', gstPercent: '',
+  unitOfMeasure: 'PCS',
   minStockLevel: 10, categoryId: '', supplierId: '',
   rackId: '', boxId: '', remarks: '', isActive: true
 };
 
 const GST_OPTIONS = ['0', '5', '12', '18'];
+
+const UNIT_OPTIONS = [
+  { value: 'PCS',   label: 'Pieces', icon: '📦', short: 'pcs' },
+  { value: 'METER', label: 'Meter',  icon: '📏', short: 'm'   },
+  { value: 'LITER', label: 'Liter',  icon: '🧴', short: 'L'   },
+  { value: 'KG',    label: 'Kg',     icon: '⚖',  short: 'kg'  },
+];
 
 const Products = () => {
   const navigate = useNavigate();
@@ -64,14 +72,11 @@ const Products = () => {
   const [filterCategory, setFilterCategory] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Draft
   const [draftFound, setDraftFound] = useState(null);
   const [draftDismissed, setDraftDismissed] = useState(false);
 
-  // Detail modal
   const [detailProduct, setDetailProduct] = useState(null);
 
-  // Modal inline rack/box
   const [showModalNewRack,  setShowModalNewRack]  = useState(false);
   const [showModalNewBox,   setShowModalNewBox]   = useState(false);
   const [showModalRackView, setShowModalRackView] = useState(false);
@@ -87,7 +92,6 @@ const Products = () => {
   useEffect(() => { loadData(); checkDraft(); }, []);
   useEffect(() => { setCurrentPage(1); }, [searchTerm, filterCategory]);
 
-  // Auto-save draft whenever form changes while modal is open
   useEffect(() => {
     if (!showModal) return;
     const hasData = formData.categoryId || formData.description || formData.partNumber || formData.unitPrice;
@@ -116,7 +120,6 @@ const Products = () => {
     finally { setLoading(false); }
   };
 
-  // ── Live filter ───────────────────────────────────────────────
   const filteredProducts = useMemo(() => {
     let result = products;
     if (filterCategory) result = result.filter(p => p.category?.categoryId === parseInt(filterCategory));
@@ -130,7 +133,6 @@ const Products = () => {
     return result;
   }, [products, searchTerm, filterCategory]);
 
-  // ── Pagination ────────────────────────────────────────────────
   const totalPages    = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
   const safePage      = Math.min(currentPage, totalPages);
   const pagedProducts = filteredProducts.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
@@ -145,7 +147,6 @@ const Products = () => {
     return pages;
   };
 
-  // ── Modal rack/box ────────────────────────────────────────────
   const handleModalSaveRack = async (e) => {
     e.preventDefault();
     if (!modalNewRack.rackNumber || !modalNewRack.rackName) { toast.error('Fill rack number and name'); return; }
@@ -214,6 +215,7 @@ const Products = () => {
         partNumber:     formData.partNumber?.trim()     || null,
         description:    formData.description?.trim()    || null,
         packageType:    formData.packageType?.trim()    || null,
+        unitOfMeasure:  formData.unitOfMeasure          || 'PCS',
         manufacturerPn: formData.manufacturerPn?.trim() || null,
         unitPrice:      formData.unitPrice ? parseFloat(formData.unitPrice) : 0,
         hsnCode:        formData.hsnCode?.trim()        || null,
@@ -248,6 +250,7 @@ const Products = () => {
       partNumber:     product.partNumber     || '',
       description:    product.description    || '',
       packageType:    product.packageType    || '',
+      unitOfMeasure:  product.unitOfMeasure  || 'PCS',
       manufacturerPn: product.manufacturerPn || '',
       unitPrice:      product.unitPrice      || '',
       hsnCode:        product.hsnCode        || '',
@@ -299,10 +302,8 @@ const Products = () => {
 
   const handleCloseModal = () => {
     setShowModal(false);
-    // Keep draft — user may have closed accidentally
   };
 
-  // GST calculation preview
   const unitPrice  = parseFloat(formData.unitPrice)  || 0;
   const gstPercent = parseFloat(formData.gstPercent) || 0;
   const gstAmount  = unitPrice * gstPercent / 100;
@@ -376,13 +377,13 @@ const Products = () => {
         <table className="products-table">
           <thead>
             <tr>
-              <th style={{width:40}}>#</th>
+              <th style={{ width: 40 }}>#</th>
               <th>Category</th>
               <th>Part #</th>
               <th>Description</th>
               <th>Package</th>
-              <th style={{width:70, textAlign:'center'}}>Stock In</th>
-              <th style={{width:140, textAlign:'center'}}>Actions</th>
+              <th style={{ width: 70, textAlign: 'center' }}>Stock In</th>
+              <th style={{ width: 140, textAlign: 'center' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -392,14 +393,23 @@ const Products = () => {
                 <td className="category-cell"><span className="cat-pill">{product.category?.categoryName || '-'}</span></td>
                 <td className="part-number">{product.partNumber || '—'}</td>
                 <td>{product.description || '—'}</td>
-                <td><span className="badge-package">{product.packageType || '-'}</span></td>
-                <td style={{textAlign:'center'}}>
+                <td>
+                  <span className="badge-package">{product.packageType || '-'}</span>
+                  {product.unitOfMeasure && product.unitOfMeasure !== 'PCS' && (
+                    <span className="prod-unit-badge" style={{ marginLeft: 4 }}>
+                      {product.unitOfMeasure === 'METER' ? '📏 m' :
+                       product.unitOfMeasure === 'LITER' ? '🧴 L' :
+                       product.unitOfMeasure === 'KG'    ? '⚖ kg' : product.unitOfMeasure}
+                    </span>
+                  )}
+                </td>
+                <td style={{ textAlign: 'center' }}>
                   <button className="btn-icon-stockin" title="Stock In"
                     onClick={() => navigate('/stock-in', { state: { productId: product.productId } })}>
                     <FiShoppingCart size={13}/>
                   </button>
                 </td>
-                <td className="actions" style={{textAlign:'center'}}>
+                <td className="actions" style={{ textAlign: 'center' }}>
                   <button className="btn-details" title="View Details" onClick={() => setDetailProduct(product)}>
                     <FiInfo size={12}/> Details
                   </button>
@@ -451,7 +461,6 @@ const Products = () => {
         <div className="modal-overlay" onClick={handleCloseModal}>
           <div className="modal-content modal-wide" onClick={e => e.stopPropagation()}>
 
-            {/* Modal Header */}
             <div className="prod-modal-head">
               <h2>{formData.productId ? 'Edit Product' : 'Add New Product'}</h2>
               <div className="prod-modal-head-right">
@@ -489,18 +498,30 @@ const Products = () => {
                 </div>
 
                 <div className="form-group">
+                  <label>Unit of Measure *</label>
+                  <div className="prod-unit-pills">
+                    {UNIT_OPTIONS.map(u => (
+                      <button key={u.value} type="button"
+                        className={`prod-unit-pill ${formData.unitOfMeasure === u.value ? 'active' : ''}`}
+                        onClick={() => setFormData(prev => ({ ...prev, unitOfMeasure: u.value }))}>
+                        <span style={{ fontSize: 16 }}>{u.icon}</span>
+                        <span>{u.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="form-group">
                   <label>Manufacturer P/N</label>
                   <input type="text" name="manufacturerPn" value={formData.manufacturerPn} onChange={handleInputChange} placeholder="ESP32-WROOM-32" />
                 </div>
 
-                {/* ── Unit Price ── */}
                 <div className="form-group">
                   <label>Unit Price (₹)</label>
                   <input type="number" name="unitPrice" value={formData.unitPrice}
                     onChange={handleInputChange} placeholder="0.00" step="0.01" min="0" />
                 </div>
 
-                {/* ── GST % ── */}
                 <div className="form-group">
                   <label>GST %</label>
                   <div className="prod-gst-wrap">
@@ -524,7 +545,6 @@ const Products = () => {
                   </div>
                 </div>
 
-                {/* ── HSN / SAC Code ── */}
                 <div className="form-group">
                   <label>HSN / SAC Code</label>
                   <input type="text" name="hsnCode" value={formData.hsnCode}
@@ -546,7 +566,7 @@ const Products = () => {
 
                 {/* RACK */}
                 <div className="form-group">
-                  <label><FiMapPin size={12} style={{marginRight:4,color:'#667eea'}}/> Rack</label>
+                  <label><FiMapPin size={12} style={{ marginRight: 4, color: '#667eea' }}/> Rack</label>
                   <div className="si-rack-row">
                     <select name="rackId" value={formData.rackId} onChange={handleInputChange} className="si-rack-select">
                       <option value="">Select Rack</option>
@@ -620,9 +640,9 @@ const Products = () => {
 
                 {/* BOX */}
                 <div className="form-group">
-                  <label><FiBox size={12} style={{marginRight:4,color:'#667eea'}}/> Box</label>
+                  <label><FiBox size={12} style={{ marginRight: 4, color: '#667eea' }}/> Box</label>
                   <div className="si-rack-row">
-                    <select name="boxId" value={formData.boxId} onChange={handleInputChange} className="si-rack-select" disabled={!formData.rackId}>
+                    <select name="boxId" value={formData.boxId} onChange={handleInputChange} className="si-rack-select">
                       <option value="">Select Box</option>
                       {boxes.map(b => <option key={b.boxId} value={b.boxId}>{b.boxNumber} - {b.boxLabel}</option>)}
                     </select>
@@ -664,17 +684,17 @@ const Products = () => {
           </div>
         </div>
       )}
+
       {/* ── DETAIL MODAL ── */}
       {detailProduct && (
         <div className="modal-overlay" onClick={() => setDetailProduct(null)}>
           <div className="modal-content prod-detail-modal" onClick={e => e.stopPropagation()}>
             <div className="prod-modal-head">
-              <h2><FiPackage size={18} style={{marginRight:8,color:'#667eea'}}/>{detailProduct.description || detailProduct.partNumber || 'Product Details'}</h2>
+              <h2><FiPackage size={18} style={{ marginRight: 8, color: '#667eea' }}/>{detailProduct.description || detailProduct.partNumber || 'Product Details'}</h2>
               <button className="prod-modal-close" onClick={() => setDetailProduct(null)}><FiX size={18}/></button>
             </div>
 
             <div className="prod-detail-grid">
-              {/* Left */}
               <div className="prod-detail-section">
                 <div className="prod-detail-row">
                   <span className="prod-detail-label">Category</span>
@@ -693,6 +713,14 @@ const Products = () => {
                   <span><span className="badge-package">{detailProduct.packageType || '—'}</span></span>
                 </div>
                 <div className="prod-detail-row">
+                  <span className="prod-detail-label">Unit of Measure</span>
+                  <span>
+                    {UNIT_OPTIONS.find(u => u.value === detailProduct.unitOfMeasure)
+                      ? `${UNIT_OPTIONS.find(u => u.value === detailProduct.unitOfMeasure).icon} ${UNIT_OPTIONS.find(u => u.value === detailProduct.unitOfMeasure).label}`
+                      : detailProduct.unitOfMeasure || 'PCS'}
+                  </span>
+                </div>
+                <div className="prod-detail-row">
                   <span className="prod-detail-label">Manufacturer P/N</span>
                   <span className="prod-detail-mono">{detailProduct.manufacturerPn || '—'}</span>
                 </div>
@@ -706,7 +734,6 @@ const Products = () => {
                 </div>
               </div>
 
-              {/* Right — Price + HSN/GST */}
               <div className="prod-detail-section">
                 <div className="prod-detail-price-card">
                   <div className="prod-detail-price-row">
@@ -727,7 +754,7 @@ const Products = () => {
                   )}
                 </div>
 
-                <div className="prod-detail-row" style={{marginTop:12}}>
+                <div className="prod-detail-row" style={{ marginTop: 12 }}>
                   <span className="prod-detail-label"><FiHash size={12}/> HSN / SAC Code</span>
                   <span className="prod-detail-mono">{detailProduct.hsnCode || '—'}</span>
                 </div>
@@ -743,14 +770,14 @@ const Products = () => {
                 </div>
                 <div className="prod-detail-row">
                   <span className="prod-detail-label">Status</span>
-                  <span style={{color: detailProduct.isActive !== false ? '#10b981' : '#ef4444', fontWeight:600}}>
+                  <span style={{ color: detailProduct.isActive !== false ? '#10b981' : '#ef4444', fontWeight: 600 }}>
                     {detailProduct.isActive !== false ? '✓ Active' : '✗ Inactive'}
                   </span>
                 </div>
                 {detailProduct.remarks && (
                   <div className="prod-detail-row">
                     <span className="prod-detail-label">Remarks</span>
-                    <span style={{fontSize:12,color:'#64748b'}}>{detailProduct.remarks}</span>
+                    <span style={{ fontSize: 12, color: '#64748b' }}>{detailProduct.remarks}</span>
                   </div>
                 )}
               </div>
@@ -761,7 +788,7 @@ const Products = () => {
               <button className="btn-primary" onClick={() => { handleEdit(detailProduct); setDetailProduct(null); }}>
                 <FiEdit2 size={13}/> Edit Product
               </button>
-              <button className="btn-icon-stockin" style={{padding:'8px 16px'}}
+              <button className="btn-icon-stockin" style={{ padding: '8px 16px' }}
                 onClick={() => { navigate('/stock-in', { state: { productId: detailProduct.productId } }); setDetailProduct(null); }}>
                 <FiShoppingCart size={13}/> Stock In
               </button>

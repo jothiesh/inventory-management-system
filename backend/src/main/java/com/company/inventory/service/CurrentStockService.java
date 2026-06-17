@@ -27,13 +27,18 @@ public class CurrentStockService {
      */
     @Transactional(readOnly = true)
     public Map<String, Object> getProductStock(Long productId) {
+        log.info("Processing compilation log request for combined active balance metrics details maps on Product ID: {}", productId);
         Map<String, Object> stockInfo = new HashMap<>();
 
         Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Product not found: " + productId));
+                .orElseThrow(() -> {
+                    log.error("Stock evaluation failed: Core item definitions row missing for target index tag ID: {}", productId);
+                    return new RuntimeException("Product not found: " + productId);
+                });
 
         BigDecimal totalStock = currentStockRepository.getTotalStockByProduct(productId);
         List<CurrentStock> lotStocks = currentStockRepository.findByProductProductId(productId);
+        log.debug("Discovered {} active lot tracking row vectors mapping balance records under index target: {}", lotStocks.size(), productId);
 
         stockInfo.put("productId", productId);
         stockInfo.put("partNumber", product.getPartNumber());
@@ -46,9 +51,12 @@ public class CurrentStockService {
         String status = "In Stock";
         if (totalStock.compareTo(BigDecimal.ZERO) == 0) {
             status = "Out of Stock";
+            log.warn("System catalog warning alert flag: Part profile configuration tracker item '{}' is entirely out of physical stock.", product.getPartNumber());
         } else if (product.getMinStockLevel() != null
                 && totalStock.compareTo(BigDecimal.valueOf(product.getMinStockLevel())) <= 0) {
             status = "Low Stock";
+            log.warn("System catalog threshold notification alert: Part profile '{}' dropped below minimum designated level requirements. [Current: {}, Limit threshold: {}]", 
+                    product.getPartNumber(), totalStock, product.getMinStockLevel());
         }
         stockInfo.put("status", status);
 
@@ -60,6 +68,7 @@ public class CurrentStockService {
      */
     @Transactional(readOnly = true)
     public List<CurrentStock> getProductsBelowMinStock() {
+        log.debug("Invoking batch repository lookup scanner filter layer queries to discover items beneath floor replenishment levels.");
         return currentStockRepository.findProductsBelowMinStockLevel();
     }
 
@@ -83,13 +92,13 @@ public class CurrentStockService {
      */
     @Transactional(readOnly = true)
     public Map<String, Object> getStockSummary() {
+        log.info("Executing comprehensive status aggregation analytics overview against active product catalog layout matrices.");
         Map<String, Object> summary = new HashMap<>();
 
         List<Product> allProducts = productRepository.findByIsActiveTrue();
         long inStock = 0;
         long outOfStock = 0;
         long lowStock = 0;
-        BigDecimal totalValue = BigDecimal.ZERO;
 
         for (Product product : allProducts) {
             BigDecimal stock = currentStockRepository.getTotalStockByProduct(product.getProductId());
@@ -109,6 +118,8 @@ public class CurrentStockService {
         summary.put("outOfStock", outOfStock);
         summary.put("lowStock", lowStock);
 
+        log.info("Catalog matrix analysis overview calculated successfully. Summary stats fields: Total lines: {}, Safe: {}, Beneath boundary values: {}, Empty: {}", 
+                allProducts.size(), inStock, lowStock, outOfStock);
         return summary;
     }
 }

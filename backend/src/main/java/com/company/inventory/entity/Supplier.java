@@ -1,4 +1,5 @@
 package com.company.inventory.entity;
+
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -22,7 +23,8 @@ public class Supplier {
     @Column(name = "supplier_id")
     private Long supplierId;
 
-    @Column(name = "supplier_code", unique = true, length = 20)
+    // ✅ FIXED: Removed unique = true constraint from this field annotation
+    @Column(name = "supplier_code", length = 20)
     private String supplierCode;
 
     @Column(name = "supplier_name", nullable = false, length = 200)
@@ -40,12 +42,15 @@ public class Supplier {
     @Column(name = "address", columnDefinition = "TEXT")
     private String address;
 
+    @Column(name = "gstn_number", length = 15)
+    private String gstnNumber;
+
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
-    @JsonIgnore  // ✅ FIX: Prevents lazy load error - User session already closed
+    @JsonIgnore
     private User createdBy;
 
     @CreationTimestamp

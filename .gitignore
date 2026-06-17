@@ -1,0 +1,22 @@
+﻿# Secrets - CRITICAL
+.env
+.env.*
+*.env
+
+# Java / Spring Boot
+target/
+*.jar
+*.class
+
+# Node / React
+node_modules/
+dist/
+build/
+
+# Large files
+folder_structure.txt
+
+# IDE
+.idea/
+.vscode/
+*.iml

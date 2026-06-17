@@ -3,6 +3,7 @@ package com.company.inventory.config;
 import com.company.inventory.security.JwtAuthenticationFilter;
 import com.company.inventory.security.UserDetailsServiceImpl;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +29,7 @@ import java.util.List;
 @EnableWebSecurity
 @EnableMethodSecurity
 @RequiredArgsConstructor
+@Slf4j
 public class SecurityConfig {
 
     private final UserDetailsServiceImpl userDetailsService;
@@ -43,6 +45,7 @@ public class SecurityConfig {
 
     @Bean
     public DaoAuthenticationProvider authenticationProvider() {
+        log.debug("Assembling data access authentication authorization providers mappings matching custom system user service models.");
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
         authProvider.setUserDetailsService(userDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder());
@@ -56,6 +59,8 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        log.info("Constructing core system SecurityFilterChain application access control definitions matrix rules engine.");
+
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
@@ -69,24 +74,48 @@ public class SecurityConfig {
                 .requestMatchers("/h2-console/**").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
 
-                // ── Static frontend files ─────────────────────────────
+                // ── Static frontend files ────────────────────────────
                 .requestMatchers("/", "/index.html", "/static/**", "/assets/**",
                         "/*.js", "/*.css", "/*.ico", "/*.svg", "/*.png", "/*.json").permitAll()
 
-                // ── Owner only ────────────────────────────────────────
+                // ── Owner only ───────────────────────────────────────
                 .requestMatchers("/api/owner/**").hasAuthority("OWNER")
 
-                // ── Purchase Requests — authenticated ─────────────────
+                // ── Purchase Requests — authenticated ────────────────
                 .requestMatchers("/api/purchase-requests/**").authenticated()
 
-                // ── Purchase Orders — authenticated ───────────────────
+                // ── Purchase Orders — authenticated ──────────────────
                 .requestMatchers("/api/purchase-orders/**").authenticated()
-                
 
-                // ── All other API — authenticated ─────────────────────
+                // ── QC Module ────────────────────────────────────────
+                // GET reads: QC, OWNER, STORE_MANAGER can view invoices / batches / alerts
+                .requestMatchers("GET", "/api/qc/**")
+                    .hasAnyAuthority("QC", "OWNER", "STORE_MANAGER")
+
+                // QC decisions (approve / reject): QC only
+                .requestMatchers("POST", "/api/qc/decisions/**")
+                    .hasAuthority("QC")
+
+                // Alert acknowledgement: QC only (must come BEFORE catch-all below)
+                .requestMatchers("PUT", "/api/qc/alerts/**")
+                    .hasAuthority("QC")
+
+                // Invoice upload / create / link (write ops): QC, OWNER, STORE_MANAGER
+                .requestMatchers("POST", "/api/qc/invoices/**")
+                    .hasAnyAuthority("QC", "OWNER", "STORE_MANAGER")
+
+                // Invoice update (PUT): QC, OWNER, STORE_MANAGER
+                .requestMatchers("PUT", "/api/qc/invoices/**")
+                    .hasAnyAuthority("QC", "OWNER", "STORE_MANAGER")
+
+                // Everything else under /api/qc/**: QC, OWNER, STORE_MANAGER
+                .requestMatchers("/api/qc/**")
+                    .hasAnyAuthority("QC", "OWNER", "STORE_MANAGER")
+
+                // ── All other API — authenticated ────────────────────
                 .requestMatchers("/api/**").authenticated()
 
-                // ── React Router paths ────────────────────────────────
+                // ── React Router paths ───────────────────────────────
                 .anyRequest().permitAll()
             )
             .sessionManagement(session -> session
@@ -96,14 +125,20 @@ public class SecurityConfig {
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .headers(headers -> headers.frameOptions(frame -> frame.disable()));
 
-        return http.build();
+        SecurityFilterChain builtChain = http.build();
+        log.info("System SecurityFilterChain constructed and registered cleanly inside active security context profiles.");
+        return builtChain;
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
+        log.info("Compiling cross-origin resource sharing (CORS) whitelists. Intercepting configured values string.");
         CorsConfiguration configuration = new CorsConfiguration();
+
         List<String> origins = Arrays.asList(allowedOriginsStr.split(","));
+        log.info("CORS Policy: Injecting active allowed source access domain arrays mapping nodes: {}", origins);
         configuration.setAllowedOrigins(origins);
+
         configuration.setAllowedMethods(Arrays.asList(
                 "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
         ));
@@ -113,6 +148,7 @@ public class SecurityConfig {
         configuration.setExposedHeaders(Arrays.asList(
                 "Authorization", "Content-Disposition"
         ));
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;

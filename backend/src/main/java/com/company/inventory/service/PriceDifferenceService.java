@@ -26,29 +26,32 @@ public class PriceDifferenceService {
      * Price Difference Report — TWO CASES HANDLED:
      *
      * CASE A: Same product, DIFFERENT suppliers → different cost (cross-supplier variance)
-     *   Example: Supplier A sells capacitor at ₹10, Supplier B sells same at ₹15
+     *    Example: Supplier A sells capacitor at ₹10, Supplier B sells same at ₹15
      *
      * CASE B: Same product, SAME supplier, different purchase dates → price fluctuation
-     *   Example: Supplier A sold capacitor at ₹10 in Jan, ₹15 in Mar (price hike)
+     *    Example: Supplier A sold capacitor at ₹10 in Jan, ₹15 in Mar (price hike)
      *
      * Both cases are flagged in the report with their respective type labels.
      */
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getPriceDifferenceReport() {
+        log.info("Assembling core analytical database data matrices for Price Variance mapping execution pipeline loop.");
         List<Map<String, Object>> report = new ArrayList<>();
         List<Product> products = productRepository.findByIsActiveTrue();
+        log.debug("Found {} active catalog tracking configurations to analyze for fluctuations.", products.size());
 
         for (Product product : products) {
             try {
                 List<Lot> activeLots = lotRepository.findActiveLotsByProductForFIFO(product.getProductId());
-                if (activeLots.size() < 2) continue; // Need at least 2 lots to compare
+                if (activeLots.size() < 2) {
+                    log.trace("Skipping product balance verification index for item ID {}: Contains fewer than 2 active lots required for calculation.", product.getProductId());
+                    continue; 
+                }
 
                 // ---- CASE A: Different suppliers, different prices ----
                 Map<String, List<Lot>> bySupplier = activeLots.stream()
                         .collect(Collectors.groupingBy(lot ->
-                                lot.getSupplier() != null
-                                        ? lot.getSupplier().getSupplierName()
-                                        : "Unknown"));
+                                lot.getSupplier() != null ? lot.getSupplier().getSupplierName() : "Unknown"));
 
                 // Collect all unique prices across ALL lots (any supplier)
                 List<BigDecimal> allPrices = activeLots.stream()
@@ -103,6 +106,9 @@ public class PriceDifferenceService {
                 boolean hasSameSupplierVariance = !sameSuppliervariations.isEmpty();
                 if (!hasCrossSupplierVariance && !hasSameSupplierVariance) continue;
 
+                log.debug("Fluctuation detected on Item Part Number '{}'. [Cross-Supplier Variance: {}, Intra-Supplier Fluctuation: {}]", 
+                        product.getPartNumber(), hasCrossSupplierVariance, hasSameSupplierVariance);
+
                 // Overall min/max across ALL lots of this product
                 BigDecimal overallMin = allPrices.get(0);
                 BigDecimal overallMax = allPrices.get(allPrices.size() - 1);
@@ -115,17 +121,15 @@ public class PriceDifferenceService {
                     lotRow.put("purchasePrice",  lot.getPurchasePrice());
                     lotRow.put("purchaseDate",   lot.getPurchaseDate());
                     lotRow.put("remainingQty",   lot.getRemainingQuantity());
-                    lotRow.put("supplierName",   lot.getSupplier() != null
-                            ? lot.getSupplier().getSupplierName() : "Unknown");
-                    lotRow.put("rackNumber",     lot.getRack() != null
-                            ? lot.getRack().getRackNumber() : "—");
+                    lotRow.put("supplierName",   lot.getSupplier() != null ? lot.getSupplier().getSupplierName() : "Unknown");
+                    lotRow.put("rackNumber",     lot.getRack() != null ? lot.getRack().getRackNumber() : "—");
                     lotDetails.add(lotRow);
                 }
 
                 // Determine variance type label
                 String varianceType;
                 if (hasCrossSupplierVariance && hasSameSupplierVariance) {
-                    varianceType = "Both"; // cross-supplier AND same-supplier price change
+                    varianceType = "Both"; 
                 } else if (hasCrossSupplierVariance) {
                     varianceType = "Cross-Supplier";
                 } else {
@@ -133,27 +137,24 @@ public class PriceDifferenceService {
                 }
 
                 Map<String, Object> productRow = new HashMap<>();
-                // Flat product keys for frontend table
                 productRow.put("partNumber",              product.getPartNumber());
                 productRow.put("description",             product.getDescription());
-                productRow.put("categoryName",            product.getCategory() != null
-                        ? product.getCategory().getCategoryName() : "Uncategorized");
+                productRow.put("categoryName",            product.getCategory() != null ? product.getCategory().getCategoryName() : "Uncategorized");
                 productRow.put("overallMinPrice",         overallMin);
                 productRow.put("overallMaxPrice",         overallMax);
                 productRow.put("overallDifference",       overallMax.subtract(overallMin));
-                productRow.put("overallDifferencePercent",calcPercent(overallMin, overallMax));
+                productRow.put("overallDifferencePercent", calcPercent(overallMin, overallMax));
                 productRow.put("varianceType",            varianceType);
                 productRow.put("supplierCount",           bySupplier.size());
                 productRow.put("totalLots",               activeLots.size());
-                // Case B details — per-supplier price variations
                 productRow.put("sameSupplierVariations",  sameSuppliervariations);
-                // All lot rows
                 productRow.put("lotDetails",              lotDetails);
 
                 report.add(productRow);
 
             } catch (Exception e) {
-                log.error("Price diff error for product {}: {}", product.getProductId(), e.getMessage());
+                log.error("Intra-method calculation failure processing price difference anomalies matrix for product ID {}: {}", 
+                        product.getProductId(), e.getMessage());
             }
         }
 
@@ -164,7 +165,7 @@ public class PriceDifferenceService {
             return pctB.compareTo(pctA);
         });
 
-        log.info("Price difference report: {} products with variance", report.size());
+        log.info("Price variance data mapping operation complete. Dispatched report showing variance on {} items.", report.size());
         return report;
     }
 
@@ -174,20 +175,22 @@ public class PriceDifferenceService {
      */
     @Transactional(readOnly = true)
     public void checkAndAlertPriceDifference(Product product, BigDecimal newPrice) {
+        log.debug("Running inline real-time transactional price checking monitoring interceptor on Product: '{}', Ingesting Price value: {}", 
+                product.getPartNumber(), newPrice);
         try {
-            List<BigDecimal> existingPrices =
-                    lotRepository.findDistinctPricesByProduct(product.getProductId());
+            List<BigDecimal> existingPrices = lotRepository.findDistinctPricesByProduct(product.getProductId());
 
             for (BigDecimal existingPrice : existingPrices) {
                 if (existingPrice.compareTo(newPrice) != 0) {
                     BigDecimal diffPct = calcPercent(existingPrice, newPrice);
-                    log.warn("Price difference alert — Product: {}, Existing: ₹{}, New: ₹{}, Diff: {}%",
+                    log.warn("Price variance boundary triggered — Product: {}, Historic Active Lot Baseline Price: ₹{}, Incoming Transaction Price: ₹{}, Fluctuating Percentage Value: {}%",
                             product.getPartNumber(), existingPrice, newPrice, diffPct);
                     // TODO: plug into AlertService when alert entity supports price-diff type
                 }
             }
         } catch (Exception e) {
-            log.error("Price check error for product {}: {}", product.getProductId(), e.getMessage());
+            log.error("Anomalies tracking system check dropped unexpected exception on Product indexing entity reference node {}: {}", 
+                    product.getProductId(), e.getMessage());
         }
     }
 

@@ -21,26 +21,38 @@ public class CategoryService {
 
     @Transactional(readOnly = true)
     public Category getCategoryById(Long id) {
+        log.debug("Querying repository layer for Category instance matching target ID: {}", id);
         return categoryRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Category", "id", id));
+                .orElseThrow(() -> {
+                    log.error("Category lookup failed. No entity record matches database key identifier: {}", id);
+                    return new ResourceNotFoundException("Category", "id", id);
+                });
     }
 
     @Transactional(readOnly = true)
     public List<Category> getAllCategories() {
-        return categoryRepository.findAll();
+        log.debug("Request received to fetch all category records from data storage rows.");
+        List<Category> categories = categoryRepository.findAll();
+        log.info("Fetched {} total categories from the database architecture.", categories.size());
+        return categories;
     }
 
     @Transactional(readOnly = true)
     public List<Category> getActiveCategories() {
-        return categoryRepository.findByIsActiveTrue();
+        log.debug("Filtering database elements mapping exclusively active inventory categories.");
+        List<Category> activeCategories = categoryRepository.findByIsActiveTrue();
+        log.info("Extracted {} active operational categories from master schema tables.", activeCategories.size());
+        return activeCategories;
     }
 
     @Transactional
     public Category createCategory(CategoryRequest request, User currentUser) {
-        log.info("Creating category: {}", request.getCategoryName());
+        log.info("Initiating Category profile creation sequence. Proposed Name: '{}', Proposed Code: '{}', Operator User ID: {}", 
+                request.getCategoryName(), request.getCategoryCode(), currentUser != null ? currentUser.getUserId() : "SYSTEM");
         
         // Check if category code already exists
         if (categoryRepository.existsByCategoryCode(request.getCategoryCode())) {
+            log.error("Category creation aborted: Core uniqueness constraints violated. Category code '{}' already exists in the system.", request.getCategoryCode());
             throw new RuntimeException("Category code already exists: " + request.getCategoryCode());
         }
         
@@ -51,31 +63,39 @@ public class CategoryService {
         category.setIsActive(true);
         category.setCreatedBy(currentUser);
         
-        return categoryRepository.save(category);
+        Category savedCategory = categoryRepository.save(category);
+        log.info("New inventory Category record successfully persisted. Allocated unique ID index: {}", savedCategory.getCategoryId());
+        return savedCategory;
     }
 
     @Transactional
     public Category updateCategory(Long id, CategoryRequest request, User currentUser) {
+        log.info("Processing proposed mutation update profile parameters on Category ID: {}", id);
         Category category = getCategoryById(id);
         
         // Check if category code is being changed and if it already exists
         if (!category.getCategoryCode().equals(request.getCategoryCode()) && 
-            categoryRepository.existsByCategoryCode(request.getCategoryCode())) {
+                categoryRepository.existsByCategoryCode(request.getCategoryCode())) {
+            log.error("Category update aborted: Code mutation to '{}' rejected due to a conflict with an existing category record.", request.getCategoryCode());
             throw new RuntimeException("Category code already exists: " + request.getCategoryCode());
         }
         
+        log.debug("Applying properties vector mutations against Target Category record ID: {}", id);
         category.setCategoryCode(request.getCategoryCode());
         category.setCategoryName(request.getCategoryName());
         category.setDescription(request.getDescription());
         category.setUpdatedBy(currentUser);  // ✅ Fixed: setUpdatedBy, not setUpdatedAt
         
-        return categoryRepository.save(category);
+        Category updatedCategory = categoryRepository.save(category);
+        log.info("Category details successfully modified and rewritten for ID: {}", id);
+        return updatedCategory;
     }
 
     @Transactional
     public void deleteCategory(Long id) {
+        log.warn("Triggering hard database row purge execution sequence against structural Category target ID: {}", id);
         Category category = getCategoryById(id);
         categoryRepository.delete(category);
-        log.info("Category deleted: {}", category.getCategoryName());
+        log.info("Category entity successfully erased from repository table columns matrix space. Original Name: '{}'", category.getCategoryName());
     }
 }

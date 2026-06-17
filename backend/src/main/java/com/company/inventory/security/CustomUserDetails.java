@@ -3,6 +3,7 @@ package com.company.inventory.security;
 import com.company.inventory.entity.User;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -16,6 +17,7 @@ import java.util.Collections;
  */
 @Data
 @AllArgsConstructor
+@Slf4j // <-- Lombok annotation injected to add structural tracing channels
 public class CustomUserDetails implements UserDetails {
 
     private Long userId;
@@ -30,6 +32,14 @@ public class CustomUserDetails implements UserDetails {
      * Create from User entity
      */
     public static CustomUserDetails fromUser(User user) {
+        if (user == null) {
+            log.warn("Security mapping intercept flag warning: Received null user entity target during adapter wrapping initialization.");
+            return null;
+        }
+
+        log.debug("Adapting structural database core entity records into security context details placeholder. User ID: {}, Username: '{}', Role: [{}]", 
+                user.getUserId(), user.getUsername(), user.getRole());
+
         return new CustomUserDetails(
                 user.getUserId(),
                 user.getUsername(),
@@ -43,9 +53,12 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
+        String authorityName = role != null ? role.name() : "ROLE_USER";
+        log.trace("Spring security runtime engine querying profile authorizations layer. Extracting structural mapping permission token: [{}]", authorityName);
+        
         // Return user role as authority
         return Collections.singletonList(
-                new SimpleGrantedAuthority(role.name())
+                new SimpleGrantedAuthority(authorityName)
         );
     }
 

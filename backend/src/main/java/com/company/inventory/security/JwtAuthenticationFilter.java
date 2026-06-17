@@ -34,12 +34,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
         
+        String path = request.getRequestURI();
+        String method = request.getMethod();
+        log.trace("Intercepted incoming HTTP request: [{}] {}", method, path);
+
         final String authHeader = request.getHeader("Authorization");
         final String jwt;
         final String username;
 
         // Check if Authorization header exists and starts with "Bearer "
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            log.trace("Missing or non-bearer Authorization header for path: {}. Passing to next filter.", path);
             filterChain.doFilter(request, response);
             return;
         }
@@ -49,9 +54,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             // Extract username from JWT
             username = jwtTokenProvider.extractUsername(jwt);
+            log.trace("Extracted claim subject username '{}' from incoming JWT payload.", username);
 
             // If username is valid and no authentication exists yet
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                log.debug("Initializing security profile lookup for user context: '{}'", username);
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
                 // Validate token
@@ -64,16 +71,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                     
-                    log.debug("JWT token validated for user: {}", username);
+                    log.info("Successfully authenticated user context '{}'. Granted Authorities: {}", username, userDetails.getAuthorities());
                 } else {
-                    log.warn("Invalid JWT token for user: {}", username);
+                    log.warn("JWT token verification failed structurally for user claim context: '{}'", username);
                 }
             }
             
             filterChain.doFilter(request, response);
             
         } catch (ExpiredJwtException e) {
-            log.warn("JWT token expired: {} - Expired at: {}", e.getMessage(), e.getClaims().getExpiration());
+            log.warn("Authentication rejected: JWT token has expired. Path: {}, Message: {}", path, e.getMessage());
             
             // Send 401 with clear message for expired token
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -85,7 +92,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             );
             
         } catch (JwtException e) {
-            log.error("JWT validation error: {}", e.getMessage());
+            log.error("Authentication rejected: Faulty signature or structural parsing error on JWT token. Message: {}", e.getMessage());
             
             // Send 401 for invalid token
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -97,7 +104,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             );
             
         } catch (Exception e) {
-            log.error("Error processing JWT authentication: {}", e.getMessage());
+            log.error("Unhandled exception intercepted inside JWT internal authentication processing chain: ", e);
             
             // Send 500 for other errors
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);

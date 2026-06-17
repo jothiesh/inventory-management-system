@@ -48,10 +48,12 @@ public class DeadStockService {
     // ============================================================
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getDeadStockReport() {
+        log.info("Compiling global analytical Dead Stock inventory report. Configured inactivity constraint parameter boundary: {}+ months", DEAD_STOCK_MONTHS);
         List<Map<String, Object>> result = new ArrayList<>();
         LocalDate deadStockCutoff = LocalDate.now().minusMonths(DEAD_STOCK_MONTHS);
 
         List<Lot> activeLots = getActiveLots();
+        log.debug("Scanning {} non-empty active warehouse lots for stagnant balance signatures.", activeLots.size());
 
         for (Lot lot : activeLots) {
             try {
@@ -60,10 +62,12 @@ public class DeadStockService {
 
                 // Dead stock: no movement since cutoff date
                 if (lastMovement.isBefore(deadStockCutoff)) {
-                    result.add(buildLotReport(lot, lastMovement));
+                    Map<String, Object> reportItem = buildLotReport(lot, lastMovement);
+                    result.add(reportItem);
+                    log.trace("Flagged Dead Stock Item -> Lot Number: '{}', Inactive Months: {}", lot.getLotNumber(), reportItem.get("monthsNoMovement"));
                 }
             } catch (Exception e) {
-                log.error("Dead stock - error processing lot {}: {}", lot.getLotId(), e.getMessage());
+                log.error("Dead stock parser exception context encountered inside compilation sub-routine execution loop on Lot ID {}: {}", lot.getLotId(), e.getMessage());
             }
         }
 
@@ -73,8 +77,7 @@ public class DeadStockService {
                 (Long) a.get("monthsNoMovement")
         ));
 
-        log.info("Dead stock report: {} lots found (threshold: {}+ months)",
-                result.size(), DEAD_STOCK_MONTHS);
+        log.info("Dead stock report compilation complete. Identified {} stagnant lot tracking nodes satisfying threshold requirements parameters.", result.size());
         return result;
     }
 
@@ -85,11 +88,14 @@ public class DeadStockService {
     // ============================================================
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getSlowMovingReport() {
+        log.info("Compiling operational analytical Slow Moving stock tracking report. Temporal boundary window parameters applied: {}-{} months", 
+                SLOW_MOVING_MONTHS, DEAD_STOCK_MONTHS);
         List<Map<String, Object>> result = new ArrayList<>();
         LocalDate slowMovingCutoff = LocalDate.now().minusMonths(SLOW_MOVING_MONTHS);
         LocalDate deadStockCutoff  = LocalDate.now().minusMonths(DEAD_STOCK_MONTHS);
 
         List<Lot> activeLots = getActiveLots();
+        log.debug("Scanning {} non-empty active warehouse lots for decelerated velocity signatures.", activeLots.size());
 
         for (Lot lot : activeLots) {
             try {
@@ -102,10 +108,12 @@ public class DeadStockService {
                 boolean notYetDeadStock     = !lastMovement.isBefore(deadStockCutoff);
 
                 if (olderThanSlowMoving && notYetDeadStock) {
-                    result.add(buildLotReport(lot, lastMovement));
+                    Map<String, Object> reportItem = buildLotReport(lot, lastMovement);
+                    result.add(reportItem);
+                    log.trace("Flagged Slow Moving Item -> Lot Number: '{}', Inactive Months: {}", lot.getLotNumber(), reportItem.get("monthsNoMovement"));
                 }
             } catch (Exception e) {
-                log.error("Slow moving - error processing lot {}: {}", lot.getLotId(), e.getMessage());
+                log.error("Slow moving parser exception context encountered inside compilation sub-routine execution loop on Lot ID {}: {}", lot.getLotId(), e.getMessage());
             }
         }
 
@@ -115,8 +123,7 @@ public class DeadStockService {
                 (Long) a.get("monthsNoMovement")
         ));
 
-        log.info("Slow moving report: {} lots found (threshold: {}-{} months)",
-                result.size(), SLOW_MOVING_MONTHS, DEAD_STOCK_MONTHS);
+        log.info("Slow moving report compilation complete. Identified {} low-velocity lot tracking nodes satisfying window boundaries.", result.size());
         return result;
     }
 
@@ -147,7 +154,7 @@ public class DeadStockService {
             // Never moved — use purchase date as reference
             return lot.getPurchaseDate();
         } catch (Exception e) {
-            log.error("Error fetching last movement for lot {}: {}", lot.getLotId(), e.getMessage());
+            log.error("Error fetching last movement history tracer for lot ID {} fallback applied: {}", lot.getLotId(), e.getMessage());
             return lot.getPurchaseDate();
         }
     }
@@ -169,8 +176,7 @@ public class DeadStockService {
         item.put("lastMovementDate",   lastMovementDate);
         item.put("blockedValue",       blockedValue);
         item.put("monthsNoMovement",   monthsInactive);
-        item.put("supplierName",       lot.getSupplier() != null
-                ? lot.getSupplier().getSupplierName() : "Unknown");
+        item.put("supplierName",       lot.getSupplier() != null ? lot.getSupplier().getSupplierName() : "Unknown");
 
         // Location info (important for electronics warehouse)
         item.put("rackNumber", lot.getRack() != null ? lot.getRack().getRackNumber() : "—");
@@ -180,8 +186,7 @@ public class DeadStockService {
         if (lot.getProduct() != null) {
             item.put("partNumber",   lot.getProduct().getPartNumber());
             item.put("description",  lot.getProduct().getDescription());
-            item.put("categoryName", lot.getProduct().getCategory() != null
-                    ? lot.getProduct().getCategory().getCategoryName() : "Uncategorized");
+            item.put("categoryName", lot.getProduct().getCategory() != null ? lot.getProduct().getCategory().getCategoryName() : "Uncategorized");
         } else {
             item.put("partNumber",   "N/A");
             item.put("description",  "");

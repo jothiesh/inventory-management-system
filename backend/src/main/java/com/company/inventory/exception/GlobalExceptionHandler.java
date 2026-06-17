@@ -8,7 +8,6 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 
@@ -22,6 +21,28 @@ import java.util.Map;
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    // =================================================================
+    // NEW: Handle Custom QC Exceptions
+    // =================================================================
+    @ExceptionHandler(QcException.class)
+    public ResponseEntity<Map<String, Object>> handleQcException(
+            QcException ex, 
+            WebRequest request) {
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", ex.getHttpStatus());
+        response.put("errorCode", ex.getCode()); // Injects the custom QC error code
+        response.put("message", ex.getMessage());
+        response.put("timestamp", LocalDateTime.now());
+        response.put("path", request.getDescription(false).replace("uri=", ""));
+        
+        return ResponseEntity.status(ex.getHttpStatus()).body(response);
+    }
+
+    // =================================================================
+    // Existing Exception Handlers
+    // =================================================================
 
     /**
      * Handle ResourceNotFoundException (404)

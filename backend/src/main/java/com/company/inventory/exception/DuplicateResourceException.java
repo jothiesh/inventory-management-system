@@ -1,5 +1,6 @@
 package com.company.inventory.exception;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
@@ -8,6 +9,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
  * Returns HTTP 409 Conflict status
  */
 @ResponseStatus(HttpStatus.CONFLICT)
+@Slf4j
 public class DuplicateResourceException extends RuntimeException {
 
     /**
@@ -18,6 +20,8 @@ public class DuplicateResourceException extends RuntimeException {
      */
     public DuplicateResourceException(String resourceName, String fieldName, Object fieldValue) {
         super(String.format("%s already exists with %s: '%s'", resourceName, fieldName, fieldValue));
+        log.warn("Constraint boundary conflict: Duplicate resource constraint triggered for {} matching field path {}: '{}'", 
+                resourceName, fieldName, fieldValue);
     }
 
     /**
@@ -26,6 +30,7 @@ public class DuplicateResourceException extends RuntimeException {
      */
     public DuplicateResourceException(String message) {
         super(message);
+        log.warn("Constraint boundary conflict: Unique validation interceptor dropped signature message: {}", message);
     }
 
     /**
@@ -35,5 +40,6 @@ public class DuplicateResourceException extends RuntimeException {
      */
     public DuplicateResourceException(String message, Throwable cause) {
         super(message, cause);
+        log.error("Constraint boundary conflict: Deep system layer sequence crash caused by constraint overlap parameter.", cause);
     }
 }

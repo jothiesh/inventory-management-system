@@ -7,6 +7,7 @@ import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
@@ -23,6 +24,7 @@ import java.util.function.Function;
  */
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class JwtTokenProvider {
 
     private final JwtConfig jwtConfig;
@@ -62,6 +64,7 @@ public class JwtTokenProvider {
      * Generate token with extra claims
      */
     public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails) {
+        log.info("Generating pristine signed cryptographic JWT access token token string for user subject: '{}'", userDetails.getUsername());
         return Jwts.builder()
                 .claims(extraClaims)  // Changed from setClaims
                 .subject(userDetails.getUsername())  // Changed from setSubject
@@ -76,7 +79,12 @@ public class JwtTokenProvider {
      */
     public boolean isTokenValid(String token, UserDetails userDetails) {
         final String username = extractUsername(token);
-        return (username.equals(userDetails.getUsername())) && !isTokenExpired(token);
+        boolean usernameMatches = username.equals(userDetails.getUsername());
+        boolean isExpired = isTokenExpired(token);
+        
+        log.trace("Token parameter context calculation metrics matching execution framework. Subject matches user: {}, Is token expired: {}", 
+                usernameMatches, isExpired);
+        return usernameMatches && !isExpired;
     }
 
     /**
@@ -116,6 +124,7 @@ public class JwtTokenProvider {
                     .parseSignedClaims(token);
             return true;
         } catch (Exception e) {
+            log.error("Alternative standalone token parsing collapsed due to verification failure trace error: {}", e.getMessage());
             return false;
         }
     }

@@ -94,6 +94,7 @@ public interface LotRepository extends JpaRepository<Lot, Long> {
     List<Lot> findByBoxBoxId(Long boxId);
 
     List<Lot> findByStatus(Lot.LotStatus status);
+
     Optional<Lot> findTopByProductProductIdOrderByCreatedAtDesc(Long productId);
 
     /**
@@ -109,4 +110,26 @@ public interface LotRepository extends JpaRepository<Lot, Long> {
            "WHERE l.supplier.supplierId = :supplierId " +
            "ORDER BY l.purchaseDate DESC")
     List<Lot> findBySupplierSupplierIdWithFetch(@Param("supplierId") Long supplierId);
+
+    // ─── QC module ───────────────────────────────────────────────────────────
+
+    /**
+     * All lots created in one Stock IN session — used by QC module.
+     *
+     * Uses native SQL because Lot entity may not have a Java field named
+     * `stockInBatchId` yet. As long as the DB column `stock_in_batch_id`
+     * exists on the `lots` table (added by V20260512__qc_module.sql),
+     * this works regardless of Java field naming.
+     */
+    @Query(value = "SELECT * FROM lots WHERE stock_in_batch_id = :batchId",
+           nativeQuery = true)
+    List<Lot> findByStockInBatchId(@Param("batchId") Long batchId);
+    
+    
+    
+    
+    
+    
+    
+    
 }

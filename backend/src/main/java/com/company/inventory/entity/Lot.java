@@ -11,7 +11,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-
+import com.company.inventory.qc.entity.StockInBatch;
 @Entity
 @Table(name = "lots")
 @Data
@@ -93,6 +93,45 @@ public class Lot {
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
+    
+    
+    
+    // ═══ QC Module (added 2026-05-12 by V20260512__qc_module.sql) ═══
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "stock_in_batch_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private StockInBatch stockInBatch;
+    
+    
+    
+    
+
+    @Column(name = "qc_decision", length = 20)
+    private String qcDecision;          // ACCEPTED / REJECTED / HOLD / PARTIAL
+
+    @Column(name = "qc_qty_accepted", precision = 10, scale = 2)
+    private BigDecimal qcQtyAccepted;
+
+    @Column(name = "qc_qty_rejected", precision = 10, scale = 2)
+    private BigDecimal qcQtyRejected;
+
+    @Column(name = "qc_qty_held", precision = 10, scale = 2)
+    private BigDecimal qcQtyHeld;
+
+    @Column(name = "qc_remarks", length = 500)
+    private String qcRemarks;
+    // ═══════════════════════════════════════════════════════════════
+
+
+    public Long getStockInBatchId() {
+        return stockInBatch != null ? stockInBatch.getId() : null;
+    }
+
+
+    
+    
+    
     // ── Match LotService usage: Active, Depleted, Cancelled ───────
     public enum LotStatus {
         Active, Depleted, Cancelled

@@ -9,6 +9,7 @@ import com.company.inventory.repository.LotRepository;
 import com.company.inventory.repository.ProductRepository;
 import com.company.inventory.repository.RackRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +19,7 @@ import java.util.*;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ReportService {
 
     private final ProductRepository productRepository;
@@ -27,12 +29,9 @@ public class ReportService {
     private final LotService lotService;
     private final PriceDifferenceService priceDifferenceService;
 
-    // ----------------------------------------------------------------
-    // STOCK SUMMARY
-    // Frontend keys: totalProducts, inStock, lowStock, outOfStock, products[]
-    // ----------------------------------------------------------------
     @Transactional(readOnly = true)
     public Map<String, Object> getStockSummaryReport() {
+        log.info("Compiling global Stock Summary report details map pipeline.");
         List<Product> products = productRepository.findByIsActiveTrue();
         int inStock = 0, outOfStock = 0, lowStock = 0;
         List<Map<String, Object>> productList = new ArrayList<>();
@@ -55,34 +54,36 @@ public class ReportService {
             }
 
             Map<String, Object> p = new HashMap<>();
-            p.put("partNumber",   product.getPartNumber());
-            p.put("description",  product.getDescription());
-            p.put("categoryName", product.getCategory() != null
-                    ? product.getCategory().getCategoryName() : "Uncategorized");
-            p.put("totalStock",   currentStock);
-            p.put("status",       status);
+            p.put("partNumber", product.getPartNumber());
+            p.put("description", product.getDescription());
+            p.put("categoryName", product.getCategory() != null ? product.getCategory().getCategoryName() : "Uncategorized");
+            p.put("totalStock", currentStock);
+            p.put("status", status);
             productList.add(p);
         }
 
         Map<String, Object> summary = new HashMap<>();
         summary.put("totalProducts", products.size());
-        summary.put("inStock",       inStock);
-        summary.put("outOfStock",    outOfStock);
-        summary.put("lowStock",      lowStock);
-        summary.put("products",      productList);
+        summary.put("inStock", inStock);
+        summary.put("outOfStock", outOfStock);
+        summary.put("lowStock", lowStock);
+        summary.put("products", productList);
+        
+        log.info("Stock Summary generation finished. Total catalog lines monitored: {}", products.size());
         return summary;
     }
 
-    // ----------------------------------------------------------------
-    // CATEGORY WISE
-    // Frontend keys: categoryName, totalProducts, totalStock, totalValue
-    // ----------------------------------------------------------------
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getCategoryWiseStockReport() {
+        log.info("Generating analytical Category Allocation reports context.");
         List<Map<String, Object>> report = new ArrayList<>();
-        for (Category category : categoryRepository.findByIsActiveTrue()) {
+        List<Category> categories = categoryRepository.findByIsActiveTrue();
+        log.debug("Found {} active catalog tracking configurations to parse.", categories.size());
+
+        for (Category category : categories) {
             List<Product> products = productRepository.findByCategoryCategoryId(category.getCategoryId());
             BigDecimal totalStock = BigDecimal.ZERO, totalValue = BigDecimal.ZERO;
+            
             for (Product product : products) {
                 totalStock = totalStock.add(lotService.getTotalStockByProduct(product.getProductId()));
                 for (Lot lot : lotRepository.findActiveLotsByProductForFIFO(product.getProductId())) {
@@ -90,28 +91,28 @@ public class ReportService {
                 }
             }
             Map<String, Object> row = new HashMap<>();
-            row.put("categoryName",  category.getCategoryName());
+            row.put("categoryName", category.getCategoryName());
             row.put("totalProducts", products.size());
-            row.put("totalStock",    totalStock);
-            row.put("totalValue",    totalValue);
+            row.put("totalStock", totalStock);
+            row.put("totalValue", totalValue);
             report.add(row);
         }
         return report;
     }
 
-    // ----------------------------------------------------------------
-    // RACK WISE
-    // Frontend keys: rackNumber, rackName, totalItems, totalStock, totalValue
-    // ----------------------------------------------------------------
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getRackWiseStockReport() {
+        log.info("Generating physical mapping spatial breakdown reports: RackWise layout metrics.");
         List<Map<String, Object>> report = new ArrayList<>();
-        for (Rack rack : rackRepository.findByIsActiveTrue()) {
+        List<Rack> racks = rackRepository.findByIsActiveTrue();
+
+        for (Rack rack : racks) {
             List<Lot> lots = lotRepository.findAll().stream()
                     .filter(lot -> lot.getRack() != null
                             && lot.getRack().getRackId().equals(rack.getRackId())
                             && lot.getStatus() == Lot.LotStatus.Active)
                     .toList();
+                    
             BigDecimal totalStock = BigDecimal.ZERO, totalValue = BigDecimal.ZERO;
             for (Lot lot : lots) {
                 totalStock = totalStock.add(lot.getRemainingQuantity());
@@ -119,7 +120,7 @@ public class ReportService {
             }
             Map<String, Object> row = new HashMap<>();
             row.put("rackNumber", rack.getRackNumber());
-            row.put("rackName",   rack.getRackName());
+            row.put("rackName", rack.getRackName());
             row.put("totalItems", lots.size());
             row.put("totalStock", totalStock);
             row.put("totalValue", totalValue);
@@ -128,23 +129,15 @@ public class ReportService {
         return report;
     }
 
-    // ----------------------------------------------------------------
-    // PRICE DIFFERENCE — delegated to PriceDifferenceService
-    // Case A: cross-supplier variance
-    // Case B: same-supplier price change over time
-    // ----------------------------------------------------------------
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getPriceDifferenceReport() {
+        log.info("Delegating pricing variances ledger analysis parsing request to PriceDifferenceService.");
         return priceDifferenceService.getPriceDifferenceReport();
     }
 
-    // ----------------------------------------------------------------
-    // STOCK VALUE
-    // Frontend keys: totalProducts, totalStockValue, totalQuantity,
-    //                averagePrice, categoryBreakdown[]
-    // ----------------------------------------------------------------
     @Transactional(readOnly = true)
     public Map<String, Object> getStockValueReport() {
+        log.info("Generating core financial Asset Inventory Valuation summary index map.");
         List<Lot> activeLots = lotRepository.findAll().stream()
                 .filter(lot -> lot.getStatus() == Lot.LotStatus.Active
                         && lot.getRemainingQuantity().compareTo(BigDecimal.ZERO) > 0)
@@ -152,7 +145,7 @@ public class ReportService {
 
         BigDecimal totalValue = BigDecimal.ZERO, totalQuantity = BigDecimal.ZERO;
         for (Lot lot : activeLots) {
-            totalValue    = totalValue.add(lot.getRemainingQuantity().multiply(lot.getPurchasePrice()));
+            totalValue = totalValue.add(lot.getRemainingQuantity().multiply(lot.getPurchasePrice()));
             totalQuantity = totalQuantity.add(lot.getRemainingQuantity());
         }
         BigDecimal averagePrice = totalQuantity.compareTo(BigDecimal.ZERO) > 0
@@ -164,29 +157,30 @@ public class ReportService {
             BigDecimal catValue = BigDecimal.ZERO, catQty = BigDecimal.ZERO;
             for (Product product : catProducts) {
                 for (Lot lot : lotRepository.findActiveLotsByProductForFIFO(product.getProductId())) {
-                    catQty   = catQty.add(lot.getRemainingQuantity());
+                    catQty = catQty.add(lot.getRemainingQuantity());
                     catValue = catValue.add(lot.getRemainingQuantity().multiply(lot.getPurchasePrice()));
                 }
             }
             String percentage = totalValue.compareTo(BigDecimal.ZERO) > 0
-                    ? catValue.multiply(BigDecimal.valueOf(100))
-                              .divide(totalValue, 1, RoundingMode.HALF_UP).toPlainString()
+                    ? catValue.multiply(BigDecimal.valueOf(100)).divide(totalValue, 1, RoundingMode.HALF_UP).toPlainString()
                     : "0";
             Map<String, Object> catRow = new HashMap<>();
-            catRow.put("categoryName",  category.getCategoryName());
-            catRow.put("productCount",  catProducts.size());
+            catRow.put("categoryName", category.getCategoryName());
+            catRow.put("productCount", catProducts.size());
             catRow.put("totalQuantity", catQty);
-            catRow.put("totalValue",    catValue);
-            catRow.put("percentage",    percentage);
+            catRow.put("totalValue", catValue);
+            catRow.put("percentage", percentage);
             categoryBreakdown.add(catRow);
         }
 
         Map<String, Object> report = new HashMap<>();
-        report.put("totalProducts",    productRepository.findByIsActiveTrue().size());
-        report.put("totalStockValue",  totalValue);
-        report.put("totalQuantity",    totalQuantity);
-        report.put("averagePrice",     averagePrice);
-        report.put("categoryBreakdown",categoryBreakdown);
+        report.put("totalProducts", productRepository.findByIsActiveTrue().size());
+        report.put("totalStockValue", totalValue);
+        report.put("totalQuantity", totalQuantity);
+        report.put("averagePrice", averagePrice);
+        report.put("categoryBreakdown", categoryBreakdown);
+
+        log.info("Asset Inventory Financial audit valuation compiled successfully. Combined net wealth value: {}", totalValue);
         return report;
     }
 }

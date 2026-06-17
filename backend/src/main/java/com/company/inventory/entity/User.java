@@ -53,6 +53,7 @@ public class User {
 
     public enum UserRole {
         STORE_MANAGER,
-        OWNER
+        OWNER,
+        QC                  // ← ADD THIS — QC inspector role
     }
 }

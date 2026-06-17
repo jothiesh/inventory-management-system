@@ -2,14 +2,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { categoryApi } from '../api/categoryApi';
 import { toast } from 'react-toastify';
 import {
-  FiPlus, FiEdit2, FiTrash2, FiSearch, FiX,
+  FiPlus, FiEdit2, FiTrash2, FiSearch, FiX, FiUpload,
   FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight
 } from 'react-icons/fi';
+import CategoryUploadModal from './CategoryUploadModal';
 import './Categories.css';
 
 const PAGE_SIZE = 15;
 
-// ── Inline Modal ──────────────────────────────────────────────
+// ── Edit / Add Modal ──────────────────────────────────────────
 const CategoryModal = ({ category, existingNames, existingCodes, onClose }) => {
   const [form, setForm] = useState({
     categoryCode: category?.categoryCode || '',
@@ -25,13 +26,10 @@ const CategoryModal = ({ category, existingNames, existingCodes, onClose }) => {
     const code = form.categoryCode.trim();
     if (!name) { toast.error('Category name is required'); return; }
     if (!code) { toast.error('Category code is required'); return; }
-
-    // Duplicate check
     const dupName = existingNames.find(n => n.toLowerCase() === name.toLowerCase() && n !== category?.categoryName);
     const dupCode = existingCodes.find(c => c.toLowerCase() === code.toLowerCase() && c !== category?.categoryCode);
     if (dupName) { toast.error(`Category name "${name}" already exists!`); return; }
     if (dupCode) { toast.error(`Category code "${code}" already exists!`); return; }
-
     try {
       setSaving(true);
       if (category) {
@@ -99,6 +97,7 @@ const Categories = () => {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading]       = useState(true);
   const [showModal, setShowModal]   = useState(false);
+  const [showUpload, setShowUpload] = useState(false);
   const [selected, setSelected]     = useState(null);
   const [search, setSearch]         = useState('');
   const [page, setPage]             = useState(1);
@@ -110,14 +109,27 @@ const Categories = () => {
     try {
       setLoading(true);
       const res = await categoryApi.getAll();
-      // Handle both response formats
       const data = res.data?.data || res.data || [];
       setCategories(Array.isArray(data) ? data : []);
     } catch { toast.error('Failed to load categories'); }
     finally { setLoading(false); }
   };
 
-  // Live search
+  const handleBulkSave = async (rows) => {
+    await Promise.all(
+      rows.map(row =>
+        categoryApi.create({
+          categoryCode: row.code,
+          categoryName: row.name,
+          description:  row.description || '',
+          isActive:     row.isActive,
+        })
+      )
+    );
+    toast.success(`✅ ${rows.length} categor${rows.length > 1 ? 'ies' : 'y'} created!`);
+    await load();
+  };
+
   const filtered = useMemo(() => {
     if (!search.trim()) return categories;
     const q = search.toLowerCase();
@@ -127,27 +139,24 @@ const Categories = () => {
     );
   }, [categories, search]);
 
-  // Pagination
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage   = Math.min(page, totalPages);
   const paged      = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   const goTo       = (p) => setPage(Math.max(1, Math.min(p, totalPages)));
   const pageNums   = () => {
-    const pages = []; let s = Math.max(1, safePage - 2), e = Math.min(totalPages, s + 4);
+    const pages = [];
+    let s = Math.max(1, safePage - 2), e = Math.min(totalPages, s + 4);
     if (e - s < 4) s = Math.max(1, e - 4);
-    for (let i = s; i <= e; i++) pages.push(i); return pages;
+    for (let i = s; i <= e; i++) pages.push(i);
+    return pages;
   };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this category?')) return;
-    try {
-      await categoryApi.delete(id);
-      toast.success('Category deleted!');
-      load();
-    } catch { toast.error('Failed to delete'); }
+    try { await categoryApi.delete(id); toast.success('Category deleted!'); load(); }
+    catch { toast.error('Failed to delete'); }
   };
 
-  // For duplicate check in modal
   const existingNames = categories.map(c => c.categoryName);
   const existingCodes = categories.map(c => c.categoryCode);
 
@@ -163,7 +172,6 @@ const Categories = () => {
           <p>{filtered.length} of {categories.length} categories</p>
         </div>
 
-        {/* Search — center */}
         <div className="cat-search-box">
           <FiSearch size={14} className="cat-search-icon" />
           <input
@@ -175,10 +183,14 @@ const Categories = () => {
           {search && <button className="cat-search-clear" onClick={() => setSearch('')}><FiX size={13} /></button>}
         </div>
 
-        {/* Right */}
-        <button className="cat-btn cat-btn-primary" onClick={() => { setSelected(null); setShowModal(true); }}>
-          <FiPlus size={14} /> Add Category
-        </button>
+        <div className="cat-header-actions">
+          <button className="cat-btn cat-btn-outline" onClick={() => setShowUpload(true)}>
+            <FiUpload size={14} /> Upload Excel
+          </button>
+          <button className="cat-btn cat-btn-primary" onClick={() => { setSelected(null); setShowModal(true); }}>
+            <FiPlus size={14} /> Add Category
+          </button>
+        </div>
       </div>
 
       {/* ── Table ── */}
@@ -186,12 +198,12 @@ const Categories = () => {
         <table className="cat-table">
           <thead>
             <tr>
-              <th style={{width:40}}>#</th>
+              <th style={{ width: 40 }}>#</th>
               <th>Code</th>
               <th>Category Name</th>
               <th>Description</th>
-              <th style={{width:90}}>Status</th>
-              <th style={{width:100}}>Actions</th>
+              <th style={{ width: 90 }}>Status</th>
+              <th style={{ width: 100 }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -234,16 +246,16 @@ const Categories = () => {
       {filtered.length > PAGE_SIZE && (
         <div className="cat-pagination">
           <div className="cat-pg-info">
-            Showing {(safePage-1)*PAGE_SIZE+1}–{Math.min(safePage*PAGE_SIZE, filtered.length)} of {filtered.length}
+            Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
           </div>
           <div className="cat-pg-controls">
-            <button className="cat-pg-btn" onClick={() => goTo(1)} disabled={safePage===1}><FiChevronsLeft size={13}/></button>
-            <button className="cat-pg-btn" onClick={() => goTo(safePage-1)} disabled={safePage===1}><FiChevronLeft size={13}/></button>
+            <button className="cat-pg-btn" onClick={() => goTo(1)} disabled={safePage === 1}><FiChevronsLeft size={13} /></button>
+            <button className="cat-pg-btn" onClick={() => goTo(safePage - 1)} disabled={safePage === 1}><FiChevronLeft size={13} /></button>
             {pageNums().map(p => (
-              <button key={p} className={`cat-pg-btn cat-pg-num ${p===safePage?'active':''}`} onClick={() => goTo(p)}>{p}</button>
+              <button key={p} className={`cat-pg-btn cat-pg-num ${p === safePage ? 'active' : ''}`} onClick={() => goTo(p)}>{p}</button>
             ))}
-            <button className="cat-pg-btn" onClick={() => goTo(safePage+1)} disabled={safePage===totalPages}><FiChevronRight size={13}/></button>
-            <button className="cat-pg-btn" onClick={() => goTo(totalPages)} disabled={safePage===totalPages}><FiChevronsRight size={13}/></button>
+            <button className="cat-pg-btn" onClick={() => goTo(safePage + 1)} disabled={safePage === totalPages}><FiChevronRight size={13} /></button>
+            <button className="cat-pg-btn" onClick={() => goTo(totalPages)} disabled={safePage === totalPages}><FiChevronsRight size={13} /></button>
           </div>
           <div className="cat-pg-jump">
             <span>Go to</span>
@@ -260,6 +272,15 @@ const Categories = () => {
           existingNames={existingNames}
           existingCodes={existingCodes}
           onClose={(r) => { setShowModal(false); setSelected(null); if (r) load(); }}
+        />
+      )}
+
+      {showUpload && (
+        <CategoryUploadModal
+          existingNames={existingNames}
+          existingCodes={existingCodes}
+          onClose={(r) => { setShowUpload(false); if (r) load(); }}
+          onSave={handleBulkSave}
         />
       )}
     </div>

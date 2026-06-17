@@ -1,4 +1,5 @@
 package com.company.inventory.entity;
+
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -9,6 +10,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
+
 @Entity
 @Table(name = "alerts")
 @Data
@@ -27,13 +29,13 @@ public class Alert {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id")
-    @OnDelete(action = OnDeleteAction.CASCADE) 
-    @JsonIgnore  // ✅ FIX - was @JsonIgnoreProperties, must be @JsonIgnore
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    @JsonIgnore
     private Product product;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
-    @JsonIgnore  // ✅ FIX
+    @JsonIgnore
     private Category category;
 
     @Enumerated(EnumType.STRING)
@@ -54,12 +56,13 @@ public class Alert {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "acknowledged_by")
-    @JsonIgnore  // ✅ FIX
+    @JsonIgnore
     private User acknowledgedBy;
 
     public enum AlertType {
         DEAD_STOCK, SLOW_MOVING, PRICE_CHANGE, LOW_STOCK,
-        EXCESS_STOCK, NEW_PRODUCT, STOCK_ADDED, CATEGORY_ADDED
+        EXCESS_STOCK, NEW_PRODUCT, STOCK_ADDED, CATEGORY_ADDED,
+        STOCK_OUT   // ← NEW: used for all stock out transactions
     }
 
     public enum Severity {

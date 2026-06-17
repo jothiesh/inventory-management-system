@@ -1,5 +1,6 @@
 package com.company.inventory.exception;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
@@ -10,6 +11,7 @@ import java.math.BigDecimal;
  * Returns HTTP 400 Bad Request status
  */
 @ResponseStatus(HttpStatus.BAD_REQUEST)
+@Slf4j
 public class InsufficientStockException extends RuntimeException {
 
     private String productName;
@@ -25,13 +27,14 @@ public class InsufficientStockException extends RuntimeException {
     public InsufficientStockException(String productName, BigDecimal requestedQuantity, BigDecimal availableQuantity) {
         super(String.format(
             "Insufficient stock for product '%s'. Requested: %s, Available: %s",
-            productName,
-            requestedQuantity,
-            availableQuantity
+            productName, requestedQuantity, availableQuantity
         ));
         this.productName = productName;
         this.requestedQuantity = requestedQuantity;
         this.availableQuantity = availableQuantity;
+        
+        log.warn("Outflow calculation failure boundary matched: Product part '{}' balance levels are insufficient for fulfillment demand parameters. [Demanded subtraction: {}, Physical balance available: {}]", 
+                productName, requestedQuantity, availableQuantity);
     }
 
     /**
@@ -40,6 +43,7 @@ public class InsufficientStockException extends RuntimeException {
      */
     public InsufficientStockException(String message) {
         super(message);
+        log.warn("Outflow calculation failure boundary matched: Stock service validation rules layer dropped message context tracking trace: {}", message);
     }
 
     /**
@@ -49,6 +53,7 @@ public class InsufficientStockException extends RuntimeException {
      */
     public InsufficientStockException(String message, Throwable cause) {
         super(message, cause);
+        log.error("Outflow calculation failure boundary matched: Balance calculations pipeline triggered low-level dependency exception context: ", cause);
     }
 
     // Getters

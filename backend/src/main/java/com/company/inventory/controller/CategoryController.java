@@ -25,27 +25,33 @@ public class CategoryController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<CategoryResponse>>> getAllCategories() {
-        log.info("Getting all categories");
+        log.info("REST Request received: GET /api/categories | Fetching entire core category definitions index map.");
         List<Category> categories = categoryService.getAllCategories();
+        
         List<CategoryResponse> responses = categories.stream()
                 .map(CategoryResponse::fromEntity)
                 .collect(Collectors.toList());
+                
+        log.debug("Successfully serialized and mapped output list size: {}", responses.size());
         return ResponseEntity.ok(ApiResponse.success("Categories retrieved", responses));
     }
 
     @GetMapping("/active")
     public ResponseEntity<ApiResponse<List<CategoryResponse>>> getActiveCategories() {
-        log.info("Getting active categories");
+        log.info("REST Request received: GET /api/categories/active | Querying un-archived category tracking records.");
         List<Category> categories = categoryService.getActiveCategories();
+        
         List<CategoryResponse> responses = categories.stream()
                 .map(CategoryResponse::fromEntity)
                 .collect(Collectors.toList());
+                
+        log.debug("Successfully serialized and mapped active objects count: {}", responses.size());
         return ResponseEntity.ok(ApiResponse.success("Active categories retrieved", responses));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<CategoryResponse>> getCategoryById(@PathVariable Long id) {
-        log.info("Getting category by ID: {}", id);
+        log.info("REST Request received: GET /api/categories/{} | Locating row definition node element.", id);
         Category category = categoryService.getCategoryById(id);
         return ResponseEntity.ok(ApiResponse.success("Category retrieved", CategoryResponse.fromEntity(category)));
     }
@@ -55,8 +61,11 @@ public class CategoryController {
             @RequestBody CategoryRequest request,
             @AuthenticationPrincipal User currentUser) {
         
-        log.info("Creating category: {}", request.getCategoryName());
+        log.info("REST Request received: POST /api/categories | Registering a new category blueprint entry row. Designation: '{}', Identifier token: '{}'", 
+                request.getCategoryName(), request.getCategoryCode());
+                
         Category category = categoryService.createCategory(request, currentUser);
+        log.info("Category successfully written to primary table schemas context blocks. Generated unique row reference key: {}", category.getCategoryId());
         return ResponseEntity.ok(ApiResponse.success("Category created", CategoryResponse.fromEntity(category)));
     }
 
@@ -66,14 +75,14 @@ public class CategoryController {
             @RequestBody CategoryRequest request,
             @AuthenticationPrincipal User currentUser) {
         
-        log.info("Updating category ID: {}", id);
+        log.info("REST Request received: PUT /api/categories/{} | Injecting modification attributes layer parameter overrides.", id);
         Category category = categoryService.updateCategory(id, request, currentUser);
         return ResponseEntity.ok(ApiResponse.success("Category updated", CategoryResponse.fromEntity(category)));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteCategory(@PathVariable Long id) {
-        log.info("Deleting category ID: {}", id);
+        log.warn("REST Request received: DELETE /api/categories/{} | Triggering database hard row removal execution chain block.", id);
         categoryService.deleteCategory(id);
         return ResponseEntity.ok(ApiResponse.success("Category deleted", null));
     }

@@ -202,21 +202,20 @@
   color: #334155;
 }
 
+/* Active state — background & text color are applied INLINE per item
+   (item.color), so we only set the weight here. */
 .ml-nav-item.active {
-  background: linear-gradient(135deg, #eef2ff, #f5f3ff);
-  color: #667eea;
   font-weight: 600;
 }
 
-.ml-nav-item.active::before {
-  content: '';
+/* ===== NAV ACTIVE BAR (colored, set inline per item) ===== */
+.ml-nav-active-bar {
   position: absolute;
   left: 0;
   top: 50%;
   transform: translateY(-50%);
   width: 3px;
   height: 22px;
-  background: #667eea;
   border-radius: 0 3px 3px 0;
 }
 
@@ -228,19 +227,14 @@
   width: 34px;
   height: 34px;
   border-radius: 8px;
-  color: #64748b;
-  transition: all 0.18s;
+  transition: background 0.18s ease, color 0.18s ease, filter 0.18s ease;
   flex-shrink: 0;
+  /* color & background come from inline per-item style */
 }
 
+/* Slight emphasis on hover — keeps the per-item tint, just darkens a touch */
 .ml-nav-item:hover .ml-nav-icon {
-  background: #e8ecf7;
-  color: #475569;
-}
-
-.ml-nav-icon.active {
-  background: #667eea20;
-  color: #667eea;
+  filter: brightness(0.96);
 }
 
 /* ===== NAV LABEL ===== */
@@ -269,7 +263,7 @@
   flex-shrink: 0;
 }
 
-/* ===== NAV BADGE DOT (collapsed) ===== */
+/* ===== NAV BADGE DOT (collapsed) — color set inline per item ===== */
 .ml-nav-badge-dot {
   width: 8px;
   height: 8px;
@@ -345,6 +339,10 @@
 
 .ml-user-role.manager {
   color: #10b981;
+}
+
+.ml-user-role.qc {
+  color: #f59e0b;
 }
 
 /* ===== LOGOUT BUTTON ===== */
@@ -589,12 +587,8 @@
 }
 
 
-
-
-
 /* ══════════════════════════════════════════════
-   PURCHASE ORDERS — Append to MainLayout.css
-   Do NOT replace anything, just paste at bottom
+   PURCHASE ORDERS
 ══════════════════════════════════════════════ */
 
 /* ── Page shell ─────────────────────────────── */
@@ -843,7 +837,3 @@
   .po-detail-meta { grid-template-columns: 1fr 1fr; }
   .po-header { flex-direction: column; align-items: flex-start; }
 }
-
-
-
- 

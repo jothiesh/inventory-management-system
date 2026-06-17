@@ -22,8 +22,8 @@ import java.util.Map;
  * Report Controller - All report endpoints
  *
  * ✅ FIX: Method name alignment:
- *   - DeadStockService.getSlowMovingReport()  (NOT getSlowMovingStockReport)
- *   - StockOutHistoryService uses correct field names (transactionType, referenceNumber)
+ *    - DeadStockService.getSlowMovingReport()  (NOT getSlowMovingStockReport)
+ *    - StockOutHistoryService uses correct field names (transactionType, referenceNumber)
  */
 @RestController
 @RequestMapping("/api/reports")
@@ -49,8 +49,12 @@ public class ReportController {
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
 
-        log.info("Generating stock out history report");
+        log.info("REST Request received: GET /api/reports/stock-out-history | Compiling temporal outflow transaction history data map within range parameters: '{}' -> '{}'", startDate, endDate);
+        long startQueryTime = System.currentTimeMillis();
+        
         List<Map<String, Object>> report = stockOutHistoryService.getStockOutHistory(startDate, endDate);
+        
+        log.info("Outflow report dataset serialized successfully. Dispatched rows: {} | Calculation duration: {} ms", report.size(), (System.currentTimeMillis() - startQueryTime));
         return ResponseEntity.ok(ApiResponse.success("Stock out history retrieved", report));
     }
 
@@ -59,7 +63,7 @@ public class ReportController {
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getProductStockOutHistory(
             @PathVariable Long productId) {
 
-        log.info("Generating stock out history for product {}", productId);
+        log.info("REST Request received: GET /api/reports/stock-out-history/product/{} | Compiling isolated item history trajectory ledger mapping graphs.", productId);
         List<Map<String, Object>> report = stockOutHistoryService.getProductStockOutHistory(productId);
         return ResponseEntity.ok(ApiResponse.success("Product stock out history retrieved", report));
     }
@@ -72,7 +76,7 @@ public class ReportController {
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
 
-        log.info("Generating stock out summary");
+        log.info("REST Request received: GET /api/reports/stock-out-summary | Assembling higher level analytical executive outflow counts map data configurations across: '{}' -> '{}'", startDate, endDate);
         Map<String, Object> report = stockOutHistoryService.getStockOutSummary(startDate, endDate);
         return ResponseEntity.ok(ApiResponse.success("Stock out summary generated", report));
     }
@@ -83,18 +87,18 @@ public class ReportController {
 
     @GetMapping("/dead-stock")
     @PreAuthorize("hasAuthority('OWNER')")
-    @Operation(summary = "Dead stock report (lot-wise)", description = "Lots with no movement for 12+ months")
+    @Operation(summary = "Dead stock report (lot-wise)", description = "Lots with no movement for configured stagnation thresholds")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getDeadStockReport() {
-        log.info("Generating dead stock report");
+        log.info("REST Request received: GET /api/reports/dead-stock | Running warehouse analytics queries to capture completely dead stock lines.");
         List<Map<String, Object>> report = deadStockService.getDeadStockReport();
         return ResponseEntity.ok(ApiResponse.success("Dead stock report generated", report));
     }
 
     @GetMapping("/slow-moving")
     @PreAuthorize("hasAuthority('OWNER')")
-    @Operation(summary = "Slow moving stock report (lot-wise)", description = "Lots with no movement for 6-12 months")
+    @Operation(summary = "Slow moving stock report (lot-wise)", description = "Lots with reduced velocity profiles within windowed cutoff dates.")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getSlowMovingReport() {
-        log.info("Generating slow moving stock report");
+        log.info("REST Request received: GET /api/reports/slow-moving | Processing database sweeps to flag deceleration profiles inside storage lots.");
         // ✅ FIX: Method is getSlowMovingReport() NOT getSlowMovingStockReport()
         List<Map<String, Object>> report = deadStockService.getSlowMovingReport();
         return ResponseEntity.ok(ApiResponse.success("Slow moving stock report generated", report));
@@ -107,7 +111,7 @@ public class ReportController {
     @GetMapping("/stock-summary")
     @Operation(summary = "Stock summary report", description = "Get overall stock summary")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getStockSummary() {
-        log.info("Generating stock summary report");
+        log.info("REST Request received: GET /api/reports/stock-summary | Pulling unified application summary baseline counts metadata matrix framework.");
         Map<String, Object> report = reportService.getStockSummaryReport();
         return ResponseEntity.ok(ApiResponse.success("Stock summary generated", report));
     }
@@ -115,7 +119,7 @@ public class ReportController {
     @GetMapping("/category-wise")
     @Operation(summary = "Category-wise stock report", description = "Get stock report by category")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getCategoryWiseReport() {
-        log.info("Generating category-wise report");
+        log.info("REST Request received: GET /api/reports/category-wise | Constructing financial valuation asset report sorted by catalog fields parameters.");
         List<Map<String, Object>> report = reportService.getCategoryWiseStockReport();
         return ResponseEntity.ok(ApiResponse.success("Category-wise report generated", report));
     }
@@ -123,16 +127,16 @@ public class ReportController {
     @GetMapping("/rack-wise")
     @Operation(summary = "Rack-wise stock report", description = "Get stock report by rack")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getRackWiseReport() {
-        log.info("Generating rack-wise report");
+        log.info("REST Request received: GET /api/reports/rack-wise | Constructing spatial warehouse placement balance inventory sheets reports map.");
         List<Map<String, Object>> report = reportService.getRackWiseStockReport();
         return ResponseEntity.ok(ApiResponse.success("Rack-wise report generated", report));
     }
 
     @GetMapping("/price-difference")
     @PreAuthorize("hasAuthority('OWNER')")
-    @Operation(summary = "Price difference report", description = "Products purchased at different prices")
+    @Operation(summary = "Price difference report", description = "Products purchased at different prices across suppliers or timeframes")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getPriceDifferenceReport() {
-        log.info("Generating price difference report");
+        log.info("REST Request received: GET /api/reports/price-difference | Triggering specialized background inflation-deflation variances auditor algorithm mappings layout execution.");
         List<Map<String, Object>> report = reportService.getPriceDifferenceReport();
         return ResponseEntity.ok(ApiResponse.success("Price difference report generated", report));
     }
@@ -141,7 +145,7 @@ public class ReportController {
     @PreAuthorize("hasAuthority('OWNER')")
     @Operation(summary = "Stock value report", description = "Get total stock value")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getStockValueReport() {
-        log.info("Generating stock value report");
+        log.info("REST Request received: GET /api/reports/stock-value | Invoking asset financial capital audit calculations map over active rows balances.");
         Map<String, Object> report = reportService.getStockValueReport();
         return ResponseEntity.ok(ApiResponse.success("Stock value report generated", report));
     }

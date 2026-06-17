@@ -8,7 +8,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -33,6 +32,11 @@ public class Product {
 
     @Column(name = "package_type", length = 100)
     private String packageType;
+
+    // ── NEW: Unit of Measure ──────────────────────────────────────
+    @Column(name = "unit_of_measure", nullable = false, length = 20)
+    private String unitOfMeasure = "PCS";   // PCS / METER / LITER / KG
+    // ─────────────────────────────────────────────────────────────
 
     @Column(name = "specification", columnDefinition = "TEXT")
     private String specification;

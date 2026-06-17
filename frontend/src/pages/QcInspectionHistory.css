@@ -1,0 +1,75 @@
+/* ════════════════════════════════════════════════
+   QC INSPECTION HISTORY — Download button styles
+   ════════════════════════════════════════════════ */
+
+/* Download column header */
+.qch-th-actions {
+  width: 120px;
+  text-align: center !important;
+}
+
+/* Download cell */
+.qch-td-actions {
+  padding: 8px 10px !important;
+}
+
+/* Button group */
+.qch-dl-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: center;
+}
+
+/* Download buttons */
+.qch-dl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  border: none;
+  color: #fff;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.qch-dl-btn:hover:not(:disabled):not(.disabled) {
+  transform: translateY(-1px);
+  filter: brightness(0.9);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+}
+.qch-dl-btn:disabled,
+.qch-dl-btn.disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* PDF — red */
+.qch-dl-btn.pdf {
+  background: #ef4444;
+}
+.qch-dl-btn.pdf:not(.disabled):not(:disabled):hover {
+  background: #dc2626;
+}
+
+/* Excel — green */
+.qch-dl-btn.excel {
+  background: #217346;
+}
+.qch-dl-btn.excel:not(.disabled):not(:disabled):hover {
+  background: #1a5c38;
+}
+
+/* Spin animation */
+.qch-spin {
+  animation: qch-spin-anim 0.7s linear infinite;
+}
+@keyframes qch-spin-anim {
+  to { transform: rotate(360deg); }
+}
