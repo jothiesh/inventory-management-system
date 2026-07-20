@@ -80,5 +80,5 @@ public class StockMovement {
     @Column(name = "reversed", nullable = false)
     private boolean reversed = false;
     public enum MovementType { IN, OUT }
-    public enum TransactionType { Purchase, Production, Sale, Damage, Scrap, Reversal, Semi_Finish, Other }
+    public enum TransactionType { Purchase, Production, Assembly, Sale, Damage, Scrap, Reversal, JobWork ,Semi_Finish, Other }
 }

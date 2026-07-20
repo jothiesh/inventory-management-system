@@ -6,7 +6,7 @@ import { supplierApi } from '../api/supplierApi';
 import { rackApi } from '../api/rackApi';
 import { boxApi } from '../api/boxApi';
 import { categoryApi } from '../api/categoryApi';
-
+import Invoices from './Invoices';
 import { toast } from 'react-toastify';
 import {
   FiPlus, FiSearch, FiX, FiShoppingCart, FiPackage,
@@ -33,6 +33,47 @@ const UKEY    = 'si-product-units';
 const getUnit = (pid) => { if (!pid) return 'PCS'; try { return JSON.parse(localStorage.getItem(UKEY) || '{}')[pid] || 'PCS'; } catch { return 'PCS'; } };
 const setUnit = (pid, u) => { if (!pid) return; try { const m = JSON.parse(localStorage.getItem(UKEY) || '{}'); m[pid] = u; localStorage.setItem(UKEY, JSON.stringify(m)); } catch {} };
 const uShort  = (u) => UNITS.find(x => x.v === u)?.label || 'pcs';
+
+// ─── ★ API ERROR EXTRACTOR ───────────────────────────────────
+// Pulls the REAL reason out of any backend error:
+//   1. Spring @Valid field errors → "purchasePrice: Purchase price must be positive"
+//   2. ApiResponse.error(message) → the message string
+//   3. Network / axios error      → e.message ("Network Error", timeout…)
+//   4. Fallback text
+const apiErr = (e, fallback = 'Something went wrong') => {
+  const d = e?.response?.data;
+  if (d?.errors && typeof d.errors === 'object' && Object.keys(d.errors).length > 0) {
+    return Object.entries(d.errors).map(([field, msg]) => `${field}: ${msg}`).join(' · ');
+  }
+  if (typeof d?.message === 'string' && d.message.trim()) return d.message;
+  if (typeof d === 'string' && d.trim()) return d;
+  if (e?.message) {
+    if (e.message === 'Network Error') return 'Cannot reach server — check backend is running';
+    return e.message;
+  }
+  return fallback;
+};
+
+// Uniform toast helpers so every alert looks consistent
+const toastErr  = (msg, ms = 5000) => toast.error(`⛔ ${msg}`,  { autoClose: ms });
+const toastWarn = (msg, ms = 4000) => toast.warn(`⚠️ ${msg}`,   { autoClose: ms });
+const toastOk   = (msg, ms = 1500) => toast.success(msg,        { autoClose: ms });
+const toastInfo = (msg, ms = 2500) => toast.info(msg,           { autoClose: ms });
+
+// ─── Reason / reference helpers ──────────────────────────────
+// YYYYMMDD stamp for auto-generated references (e.g. INTERNAL-20260707)
+const dateStamp = (d = new Date()) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+};
+const INTERNAL_REF = () => `INTERNAL-${dateStamp()}`;
+
+const REASON_OPTIONS = [
+  { v: 'INVOICE',  label: 'Has Invoice' },
+  { v: 'INTERNAL', label: 'Internal / Already in store' },
+];
 
 // ─── Draft ───────────────────────────────────────────────────
 const DRAFT_KEY  = 'sx-cart-draft';
@@ -83,7 +124,7 @@ const fmtCurrency = (n) => {
 const VIEW = { MAIN: 'main', ADD: 'add', BATCHES: 'batches', REJECTED: 'rejected', BOM: 'bom', INVOICES: 'invoices' };
 
 // ════════════════════════════════════════════════════════════
-// SUB-PAGE SLIM HEADER  (★ TASK 1 — replaces per-page heroes)
+// SUB-PAGE SLIM HEADER
 // ════════════════════════════════════════════════════════════
 const SubBar = ({ icon, tone = '', title, meta, children }) => (
   <div className="sx-subbar sx-animate-in">
@@ -295,13 +336,17 @@ const BatchEditModal = ({ batch, suppliers, onClose, onSaved }) => {
         payload,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      toast.success('Batch updated!', { autoClose: 1200 });
+      toastOk('Batch updated!');
       onSaved(r.data.data);
       onClose();
     } catch (e) {
-      const msg = e.response?.data?.message || e.message || 'Save failed';
+      // ★ 409 = not PENDING_QC · 404 = batch gone · 400 = bad supplier
+      const status = e?.response?.status;
+      let msg = apiErr(e, 'Batch save failed');
+      if (status === 409) msg = `Cannot edit — ${msg}`;
+      if (status === 404) msg = `Batch not found on server — refresh the list. (${msg})`;
       setErr(msg);
-      toast.error(msg);
+      toastErr(msg);
     } finally {
       setSaving(false);
     }
@@ -423,7 +468,7 @@ const BatchEditModal = ({ batch, suppliers, onClose, onSaved }) => {
 };
 
 // ════════════════════════════════════════════════════════════
-// MY STOCK-INS PAGE   (★ TASK 1: slim subbar, no Back/hero)
+// MY STOCK-INS PAGE
 // ════════════════════════════════════════════════════════════
 const MyStockInsPage = ({ suppliers = [] }) => {
   const [batches, setBatches]           = useState([]);
@@ -459,8 +504,8 @@ const MyStockInsPage = ({ suppliers = [] }) => {
       });
       setBatches(r.data.data || []);
       await loadQcProgress();
-    } catch {
-      toast.error('Failed to load batches');
+    } catch (e) {
+      toastErr(apiErr(e, 'Failed to load batches'));
     } finally {
       setLoading(false);
     }
@@ -476,8 +521,8 @@ const MyStockInsPage = ({ suppliers = [] }) => {
         headers: { Authorization: `Bearer ${t}` },
       });
       setLotsByBatch(prev => ({ ...prev, [batchId]: r.data.data || [] }));
-    } catch {
-      toast.error('Failed to load invoice items');
+    } catch (e) {
+      toastErr(apiErr(e, 'Failed to load invoice items'));
     } finally {
       setLoadingLots(prev => ({ ...prev, [batchId]: false }));
     }
@@ -722,7 +767,7 @@ const MyStockInsPage = ({ suppliers = [] }) => {
 };
 
 // ════════════════════════════════════════════════════════════
-// REJECTED PAGE   (★ TASK 1: slim subbar, no Back/hero)
+// REJECTED PAGE
 // ════════════════════════════════════════════════════════════
 const RejectedPage = () => {
   const [batches, setBatches] = useState([]);
@@ -735,7 +780,9 @@ const RejectedPage = () => {
       const t = localStorage.getItem('token');
       const r = await axios.get('/api/stock/batches/rejected', { headers: { Authorization: `Bearer ${t}` } });
       setBatches(r.data.data || []);
-    } catch {} finally { setLoading(false); }
+    } catch (e) {
+      toastErr(apiErr(e, 'Failed to load rejected batches'));
+    } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
 
@@ -797,271 +844,25 @@ const RejectedPage = () => {
   );
 };
 
-// ════════════════════════════════════════════════════════════
-// PURCHASE INVOICE PAGE
-// ★ TASK 1: embedded => slim subbar; standalone (route) => own hero
-// ════════════════════════════════════════════════════════════
-const PurchaseInvoicePage = ({ onBack, embedded = false }) => {
-  const [invoices, setInvoices]           = useState([]);
-  const [loading, setLoading]             = useState(false);
-  const [search, setSearch]               = useState('');
-  const [selected, setSelected]           = useState(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-
-  const doSearch = async (q) => {
-    try {
-      setLoading(true);
-      const t = localStorage.getItem('token');
-      const r = await axios.get(`/api/qc/invoices?q=${encodeURIComponent(q)}&page=0&size=20`,
-        { headers: { Authorization: `Bearer ${t}` } });
-      setInvoices(r.data.content || []);
-    } catch { toast.error('Failed to search invoices'); }
-    finally { setLoading(false); }
-  };
-
-  const loadDetail = async (invoiceNo) => {
-    try {
-      setDetailLoading(true);
-      const t = localStorage.getItem('token');
-      const r = await axios.get('/api/qc/invoices/by-no', {
-        params: { no: invoiceNo },
-        headers: { Authorization: `Bearer ${t}` },
-      });
-      setSelected(r.data);
-    } catch { toast.error('Failed to load invoice'); }
-    finally { setDetailLoading(false); }
-  };
-
-  useEffect(() => { doSearch(''); }, []);
-  useEffect(() => {
-    const timer = setTimeout(() => doSearch(search), 350);
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  const itemTotal = selected?.items?.reduce((s, i) => s + parseFloat(i.lineTotal || 0), 0) || 0;
-  const totalQty  = selected?.items?.reduce((s, i) => s + parseFloat(i.quantity  || 0), 0) || 0;
-
-  return (
-    <div className={embedded ? 'sx-view' : 'sx-page'}>
-      {embedded ? (
-        <SubBar
-          icon={<FiFileText size={15} />}
-          tone="sx-subbar-icon-amber"
-          title="Purchase Invoices"
-          meta="Search · view · verify scanned invoices"
-        />
-      ) : (
-        <div className="sx-hero sx-animate-in">
-          {onBack && <button className="sx-back" onClick={onBack}><FiArrowLeft size={15} /> Back</button>}
-          <div className="sx-hero-content">
-            <div className="sx-hero-icon sx-hero-icon-amber"><FiFileText size={20} /></div>
-            <div>
-              <h1 className="sx-hero-title">Purchase Invoices</h1>
-              <p className="sx-hero-sub">Search · view · verify scanned invoices</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="pi-layout">
-        <div className="pi-list-panel">
-          <div className="pi-search-wrap">
-            <FiSearch size={14} className="pi-search-icon" />
-            <input
-              className="pi-search-input"
-              value={search}
-              onChange={e => { setSearch(e.target.value); setSelected(null); }}
-              placeholder="Invoice no., supplier, PO…"
-              autoFocus
-            />
-            {search && (
-              <button className="pi-search-clear" onClick={() => { setSearch(''); setSelected(null); }}>
-                <FiX size={13} />
-              </button>
-            )}
-          </div>
-
-          {loading
-            ? <div className="pi-list-loading"><FiRefreshCw size={20} className="sx-spin" /></div>
-            : invoices.length === 0
-              ? <div className="pi-list-empty"><FiFileText size={28} /><span>No invoices found</span></div>
-              : (
-                <div className="pi-list">
-                  {invoices.map(inv => (
-                    <button
-                      key={inv.id}
-                      className={`pi-list-item ${selected?.invoiceNo === inv.invoiceNo ? 'pi-list-item-active' : ''}`}
-                      onClick={() => loadDetail(inv.invoiceNo)}
-                    >
-                      <div className="pi-item-top">
-                        <span className="pi-item-no">{inv.invoiceNo}</span>
-                        <span className="pi-item-count">{inv.itemCount || 0} items</span>
-                      </div>
-                      <div className="pi-item-supplier">{inv.supplierName || '—'}</div>
-                      <div className="pi-item-bottom">
-                        <span className="pi-item-date">{fmtDateShort(inv.invoiceDate)}</span>
-                        {inv.invoiceTotal && <span className="pi-item-total">₹{fmtCurrency(inv.invoiceTotal)}</span>}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-        </div>
-
-        <div className="pi-detail-panel">
-          {detailLoading ? (
-            <div className="pi-detail-loading"><FiRefreshCw size={28} className="sx-spin" /><span>Loading…</span></div>
-          ) : !selected ? (
-            <div className="pi-detail-empty">
-              <FiFileText size={48} />
-              <h3>Select an invoice</h3>
-              <p>Search and click an invoice to view full tax invoice details</p>
-            </div>
-          ) : (
-            <div className="pi-invoice">
-              <div className="pi-inv-banner">
-                <div className="pi-inv-banner-title">TAX INVOICE</div>
-                <div className="pi-inv-banner-orig">ORIGINAL FOR RECIPIENT</div>
-              </div>
-
-              <div className="pi-inv-top">
-                <div className="pi-inv-from">
-                  <div className="pi-inv-section-label">Supplier / From</div>
-                  <div className="pi-inv-from-name">{selected.supplierName}</div>
-                  {selected.supplierGstin && (
-                    <div className="pi-inv-gstin">GSTIN/UIN: {selected.supplierGstin}</div>
-                  )}
-                </div>
-                <div className="pi-inv-details">
-                  <table className="pi-inv-details-table">
-                    <tbody>
-                      <tr>
-                        <td className="pi-dk">Invoice No.</td>
-                        <td className="pi-dv pi-dv-mono">{selected.invoiceNo}</td>
-                      </tr>
-                      <tr>
-                        <td className="pi-dk">Dated</td>
-                        <td className="pi-dv">{fmtDate(selected.invoiceDate)}</td>
-                      </tr>
-                      {selected.poNo && (
-                        <tr>
-                          <td className="pi-dk">PO No.</td>
-                          <td className="pi-dv">{selected.poNo}</td>
-                        </tr>
-                      )}
-                      {selected.stockInBatchId && (
-                        <tr>
-                          <td className="pi-dk">Linked Batch</td>
-                          <td className="pi-dv"><span className="pi-linked-badge">#{selected.stockInBatchId}</span></td>
-                        </tr>
-                      )}
-                      <tr>
-                        <td className="pi-dk">Products</td>
-                        <td className="pi-dv"><strong>{selected.items?.length || 0}</strong> line items</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="pi-inv-consignee">
-                <div className="pi-inv-section-label">Consignee (Ship to)</div>
-                <div className="pi-inv-consignee-name">THINTURE TECHNOLOGIES PVT. LTD.</div>
-                <div className="pi-inv-consignee-addr">
-                  No.508, 2nd Floor, 2nd Block, 8th Main, HMT Layout, Vidyaranyapura, Bangalore – 560097
-                </div>
-              </div>
-
-              {selected.items?.length > 0 ? (
-                <div className="pi-inv-table-wrap">
-                  <table className="pi-inv-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 36 }}>Sl No.</th>
-                        <th>Description of Goods</th>
-                        <th style={{ width: 100 }}>Part No.</th>
-                        <th style={{ width: 80 }}>HSN/SAC</th>
-                        <th style={{ width: 80, textAlign: 'right' }}>Quantity</th>
-                        <th style={{ width: 90, textAlign: 'right' }}>Rate (₹)</th>
-                        <th style={{ width: 110, textAlign: 'right' }}>Amount (₹)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selected.items.map((item, idx) => (
-                        <tr key={item.id || idx} className="pi-inv-row">
-                          <td className="pi-center">{item.slNo || idx + 1}</td>
-                          <td>{item.description || '—'}</td>
-                          <td className="pi-partno">{item.partNo || '—'}</td>
-                          <td className="pi-hsn">{item.hsnSac || '—'}</td>
-                          <td className="pi-right pi-qty-cell">{item.quantity ? `${item.quantity} No` : '—'}</td>
-                          <td className="pi-right">{item.unitPrice ? fmtCurrency(item.unitPrice) : '—'}</td>
-                          <td className="pi-right pi-amount-cell">{item.lineTotal ? fmtCurrency(item.lineTotal) : '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="pi-tfoot-row">
-                        <td colSpan={4} className="pi-tfoot-label">Total</td>
-                        <td className="pi-right pi-qty-cell"><strong>{totalQty} No</strong></td>
-                        <td></td>
-                        <td className="pi-right pi-amount-cell"><strong>₹{fmtCurrency(itemTotal)}</strong></td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              ) : (
-                <div className="pi-inv-no-items">
-                  <FiPackage size={20} /><span>No line items recorded for this invoice</span>
-                </div>
-              )}
-
-              <div className="pi-inv-grand-section">
-                <div className="pi-inv-grand-row">
-                  <span className="pi-inv-grand-label">GRAND TOTAL</span>
-                  <span className="pi-inv-grand-val">₹{fmtCurrency(selected.invoiceTotal || itemTotal)}</span>
-                </div>
-                {selected.currencyCode && selected.currencyCode !== 'INR' && (
-                  <div className="pi-inv-currency">Currency: {selected.currencyCode}</div>
-                )}
-              </div>
-
-              {selected.fileName && (
-                <div className="pi-inv-attachment">
-                  <FiFileText size={13} />
-                  <span>Scanned: <strong>{selected.fileName}</strong></span>
-                  <a
-                    href={`/api/qc/invoices/${selected.id}/file`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="pi-inv-download"
-                  >
-                    View / Download
-                  </a>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 // ════════════════════════════════════════════════════════════
 // ADD STOCK PAGE
-// ★ TASK 1: slim subbar (draft chip + cart badge kept)
-// ★ TASK 2: Part No. & Description OPTIONAL · Invoice No. MANDATORY
+// ★ Reason-aware validation (INVOICE vs INTERNAL)
+// ★ Every failure now raises a SPECIFIC toast:
+//    - which cart row / part failed
+//    - which field the backend rejected
+//    - HTTP status meaning (401/403/404/409/400/network)
 // ════════════════════════════════════════════════════════════
 const AddStockPage = ({ onSuccess, products, suppliers, racks, categories, reloadAll }) => {
   const today = new Date().toISOString().split('T')[0];
   const blank = {
     partNumber: '', description: '', categoryId: '', categoryName: '',
-    packageType: '', manufacturerPn: '', hsnCode: '', gstPercent: '',
+    packageType: '', manufacturerPn: '', make: '', hsnCode: '', gstPercent: '',
     quantity: '', unitOfMeasure: 'PCS', purchasePrice: '',
     rackId: '', boxId: '', remarks: '',
   };
 
-  const [sticky, setSticky]             = useState({ supplierId: '', invoiceNumber: '', purchaseDate: today });
+  const [sticky, setSticky]             = useState({ supplierId: '', invoiceReason: 'INVOICE', invoiceNumber: '', purchaseDate: today });
   const [cart, setCart]                 = useState([]);
   const [editIdx, setEditIdx]           = useState(null);
   const [row, setRow]                   = useState(blank);
@@ -1082,7 +883,12 @@ const AddStockPage = ({ onSuccess, products, suppliers, racks, categories, reloa
   useEffect(() => { if (cart.length > 0) { saveDraft(cart, sticky); setDraftSavedAt(new Date().toISOString()); } }, [cart, sticky]);
   useEffect(() => { const h = (e) => { if (cart.length > 0) { e.preventDefault(); e.returnValue = ''; } }; window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h); }, [cart]);
   useEffect(() => { const h = (e) => { if (catRef.current && !catRef.current.contains(e.target)) setShowCatDD(false); }; document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h); }, []);
-  useEffect(() => { if (!row.rackId) { setBoxes([]); return; } boxApi.getByRack(row.rackId).then(r => setBoxes(r.data.data || [])).catch(() => setBoxes([])); }, [row.rackId]);
+  useEffect(() => {
+    if (!row.rackId) { setBoxes([]); return; }
+    boxApi.getByRack(row.rackId)
+      .then(r => setBoxes(r.data.data || []))
+      .catch((e) => { setBoxes([]); toastWarn(apiErr(e, 'Could not load boxes for this rack')); });
+  }, [row.rackId]);
 
   const productsInSelectedCategory = useMemo(() => { if (!selectedCatId) return []; return products.filter(p => p.category?.categoryId === parseInt(selectedCatId)); }, [selectedCatId, products]);
 
@@ -1090,59 +896,188 @@ const AddStockPage = ({ onSuccess, products, suppliers, racks, categories, reloa
     setSelectedProdId(prodId);
     if (!prodId) { setRow(prev => ({ ...prev, partNumber: '', description: '', categoryId: '', categoryName: '' })); setProductState('empty'); setMatched(null); return; }
     const p = products.find(x => x.productId === parseInt(prodId));
-    if (p) { setProductState('existing'); setMatched(p); setRow(prev => ({ ...prev, partNumber: p.partNumber || '', description: p.description || '', categoryId: p.category?.categoryId || '', categoryName: p.category?.categoryName || '', packageType: p.packageType || '', manufacturerPn: p.manufacturerPn || '', hsnCode: p.hsnCode || '', gstPercent: p.gstPercent !== undefined && p.gstPercent !== null ? String(p.gstPercent) : '', purchasePrice: prev.purchasePrice || p.unitPrice || '', rackId: prev.rackId || p.rack?.rackId || '', boxId: prev.boxId || p.box?.boxId || '', unitOfMeasure: getUnit(p.productId) || 'PCS' })); }
+    if (!p) { toastErr('Selected product not found in catalog — refresh the page'); return; }
+    setProductState('existing'); setMatched(p);
+    setRow(prev => ({ ...prev, partNumber: p.partNumber || '', description: p.description || '', categoryId: p.category?.categoryId || '', categoryName: p.category?.categoryName || '', packageType: p.packageType || '', manufacturerPn: p.manufacturerPn || '', make: p.make || '', hsnCode: p.hsnCode || '', gstPercent: p.gstPercent !== undefined && p.gstPercent !== null ? String(p.gstPercent) : '', purchasePrice: prev.purchasePrice || p.unitPrice || '', rackId: prev.rackId || p.rack?.rackId || '', boxId: prev.boxId || p.box?.boxId || '', unitOfMeasure: getUnit(p.productId) || 'PCS' }));
   };
   const handleProductFieldChange = (field, value) => { if (field === 'partNumber' || field === 'description') { setProductState('new'); setMatched(null); } setRow(prev => ({ ...prev, [field]: value })); };
   const pickCategoryFresh = (c) => { setRow(prev => ({ ...prev, categoryId: c.categoryId, categoryName: c.categoryName })); setCatText(c.categoryName); setShowCatDD(false); };
   const filteredCats = useMemo(() => { if (!catText.trim()) return categories; const q = catText.toLowerCase(); return categories.filter(c => (c.categoryName || '').toLowerCase().includes(q) || (c.categoryCode || '').toLowerCase().includes(q)); }, [categories, catText]);
 
-  // ★ TASK 2: partNumber & description NOT required anymore
+  // ★ Reason-aware validation with a SPECIFIC message for every failure
   const validate = () => {
-    if (!row.quantity || parseFloat(row.quantity) <= 0) return 'Enter valid quantity';
-    if (!row.purchasePrice || parseFloat(row.purchasePrice) <= 0) return 'Enter valid price';
-    if (row.partNumber?.trim()) { const dup = cart.findIndex((it, i) => i !== editIdx && it.partNumber && it.partNumber.toLowerCase() === row.partNumber.trim().toLowerCase()); if (dup !== -1) return `Already in cart at row #${dup + 1}`; }
+    const isInternal = sticky.invoiceReason === 'INTERNAL';
+
+    // 1. A real product must exist in BOTH modes — backend cannot create a lot without one
+    if (activeWorkflow === 'existing' && !matched?.productId)
+      return 'Select a product first (Category → Component)';
+    if (activeWorkflow === 'fresh' && !row.categoryId)
+      return 'Select a Category — required to register the new product';
+
+    // 2. Quantity is ALWAYS required — a 0-qty lot is invalid even for internal stock
+    if (!row.quantity || isNaN(parseFloat(row.quantity)))
+      return 'Enter Qty — quantity is required';
+    if (parseFloat(row.quantity) <= 0)
+      return `Qty must be greater than 0 (you entered ${row.quantity})`;
+
+    // 3. Price rules by reason:
+    //    INVOICE  → must be > 0
+    //    INTERNAL → 0 or above allowed; blank treated as 0; negative blocked
+    if (!isInternal) {
+      if (!row.purchasePrice || isNaN(parseFloat(row.purchasePrice)))
+        return 'Enter Price — required when reason is "Has Invoice"';
+      if (parseFloat(row.purchasePrice) <= 0)
+        return `Price must be greater than 0 for invoice stock (you entered ${row.purchasePrice})`;
+    } else {
+      if (row.purchasePrice && parseFloat(row.purchasePrice) < 0)
+        return 'Price cannot be negative';
+    }
+
+    // 4. GST sanity (both modes)
+    if (row.gstPercent && (parseFloat(row.gstPercent) < 0 || parseFloat(row.gstPercent) > 100))
+      return `GST % must be between 0 and 100 (you entered ${row.gstPercent})`;
+
+    // 5. Duplicate check
+    if (row.partNumber?.trim()) {
+      const dup = cart.findIndex((it, i) =>
+        i !== editIdx && it.partNumber &&
+        it.partNumber.toLowerCase() === row.partNumber.trim().toLowerCase());
+      if (dup !== -1) return `"${row.partNumber.trim()}" is already in cart at row #${dup + 1} — edit that row instead`;
+    }
     return null;
   };
+
   const buildItem = () => {
     const qty = parseFloat(row.quantity) || 0; const price = parseFloat(row.purchasePrice) || 0; const gstPct = parseFloat(row.gstPercent) || 0;
     const baseValue = qty * price; const gstAmount = baseValue * gstPct / 100;
     const r = racks.find(x => x.rackId === parseInt(row.rackId)); const b = boxes.find(x => x.boxId === parseInt(row.boxId));
-    return { isNew: productState === 'new', existingProductId: matched?.productId || null, partNumber: row.partNumber.trim() || matched?.partNumber || null, description: row.description || matched?.description || null, categoryId: parseInt(row.categoryId) || null, categoryName: row.categoryName, packageType: row.packageType, manufacturerPn: row.manufacturerPn, hsnCode: row.hsnCode || null, gstPercent: row.gstPercent || null, quantity: qty, purchasePrice: price, baseValue, gstAmount, totalValue: baseValue + gstAmount, unitOfMeasure: row.unitOfMeasure || 'PCS', rackId: parseInt(row.rackId) || null, boxId: parseInt(row.boxId) || null, rackDisp: r?.rackName || r?.rackNumber || '—', boxDisp: b?.boxLabel || b?.boxNumber || '—', remarks: row.remarks || null };
+    return { isNew: productState === 'new', existingProductId: matched?.productId || null, partNumber: row.partNumber.trim() || matched?.partNumber || null, description: row.description || matched?.description || null, categoryId: parseInt(row.categoryId) || null, categoryName: row.categoryName, packageType: row.packageType, manufacturerPn: row.manufacturerPn, make: row.make, hsnCode: row.hsnCode || null, gstPercent: row.gstPercent || null, quantity: qty, purchasePrice: price, baseValue, gstAmount, totalValue: baseValue + gstAmount, unitOfMeasure: row.unitOfMeasure || 'PCS', rackId: parseInt(row.rackId) || null, boxId: parseInt(row.boxId) || null, rackDisp: r?.rackName || r?.rackNumber || '—', boxDisp: b?.boxLabel || b?.boxNumber || '—', remarks: row.remarks || null };
   };
-  const addToCart = () => { const err = validate(); if (err) { toast.error(err); return; } const it = buildItem(); if (editIdx !== null) { const c = [...cart]; c[editIdx] = it; setCart(c); toast.success(`Updated #${editIdx + 1}`, { autoClose: 800 }); setEditIdx(null); } else { setCart([...cart, it]); toast.success(`Added · ${cart.length + 1} in cart`, { autoClose: 800 }); } if (matched?.productId) setUnit(matched.productId, row.unitOfMeasure); setRow(prev => ({ ...blank, rackId: prev.rackId, boxId: prev.boxId })); setSelectedCatId(''); setSelectedProdId(''); setCatText(''); setProductState('empty'); setMatched(null); };
-  const editCart = (i) => { const it = cart[i]; setEditIdx(i); if (!it.isNew && it.existingProductId) { setActiveWorkflow('existing'); const p = products.find(x => x.productId === it.existingProductId); if (p?.category?.categoryId) { setSelectedCatId(String(p.category.categoryId)); setSelectedProdId(String(p.productId)); } } else { setActiveWorkflow('fresh'); setCatText(it.categoryName || ''); } setRow({ partNumber: it.partNumber || '', description: it.description || '', categoryId: it.categoryId || '', categoryName: it.categoryName || '', packageType: it.packageType || '', manufacturerPn: it.manufacturerPn || '', hsnCode: it.hsnCode || '', gstPercent: it.gstPercent || '', quantity: it.quantity || '', unitOfMeasure: it.unitOfMeasure || 'PCS', purchasePrice: it.purchasePrice || '', rackId: it.rackId || '', boxId: it.boxId || '', remarks: it.remarks || '' }); setProductState(it.isNew ? 'new' : 'existing'); setMatched(it.existingProductId ? products.find(p => p.productId === it.existingProductId) : null); window.scrollTo({ top: 200, behavior: 'smooth' }); };
-  const removeCart = (i) => { setCart(cart.filter((_, j) => j !== i)); if (editIdx === i) { setEditIdx(null); setRow(blank); setCatText(''); setSelectedCatId(''); setSelectedProdId(''); } toast.info('Removed'); };
-  const clearAll = () => { if (!window.confirm('Clear cart?')) return; setCart([]); setEditIdx(null); setRow(blank); setCatText(''); setSelectedCatId(''); setSelectedProdId(''); clearDraft(); setDraftSavedAt(null); toast.info('Cleared'); };
+  const addToCart = () => {
+    const err = validate();
+    if (err) { toastErr(err); return; }
+    const it = buildItem();
+    if (editIdx !== null) { const c = [...cart]; c[editIdx] = it; setCart(c); toastOk(`Row #${editIdx + 1} updated`); setEditIdx(null); }
+    else { setCart([...cart, it]); toastOk(`Added "${it.partNumber || it.description || 'item'}" · ${cart.length + 1} in cart`); }
+    if (matched?.productId) setUnit(matched.productId, row.unitOfMeasure);
+    setRow(prev => ({ ...blank, rackId: prev.rackId, boxId: prev.boxId }));
+    setSelectedCatId(''); setSelectedProdId(''); setCatText(''); setProductState('empty'); setMatched(null);
+  };
+  const editCart = (i) => { const it = cart[i]; setEditIdx(i); if (!it.isNew && it.existingProductId) { setActiveWorkflow('existing'); const p = products.find(x => x.productId === it.existingProductId); if (p?.category?.categoryId) { setSelectedCatId(String(p.category.categoryId)); setSelectedProdId(String(p.productId)); } } else { setActiveWorkflow('fresh'); setCatText(it.categoryName || ''); } setRow({ partNumber: it.partNumber || '', description: it.description || '', categoryId: it.categoryId || '', categoryName: it.categoryName || '', packageType: it.packageType || '', manufacturerPn: it.manufacturerPn || '', make: it.make || '', hsnCode: it.hsnCode || '', gstPercent: it.gstPercent || '', quantity: it.quantity || '', unitOfMeasure: it.unitOfMeasure || 'PCS', purchasePrice: it.purchasePrice || '', rackId: it.rackId || '', boxId: it.boxId || '', remarks: it.remarks || '' }); setProductState(it.isNew ? 'new' : 'existing'); setMatched(it.existingProductId ? products.find(p => p.productId === it.existingProductId) : null); window.scrollTo({ top: 200, behavior: 'smooth' }); };
+  const removeCart = (i) => { const name = cart[i]?.partNumber || cart[i]?.description || `row #${i + 1}`; setCart(cart.filter((_, j) => j !== i)); if (editIdx === i) { setEditIdx(null); setRow(blank); setCatText(''); setSelectedCatId(''); setSelectedProdId(''); } toastInfo(`Removed "${name}" from cart`); };
+  const clearAll = () => { if (!window.confirm('Clear cart?')) return; setCart([]); setEditIdx(null); setRow(blank); setCatText(''); setSelectedCatId(''); setSelectedProdId(''); clearDraft(); setDraftSavedAt(null); toastInfo('Cart cleared'); };
 
   const submit = async () => {
-    if (cart.length === 0) { toast.info('Cart empty'); return; }
-    if (!sticky.supplierId) { toast.error('Select supplier at top'); return; }
-    // ★ TASK 2: INVOICE NO. is now MANDATORY
-    if (!sticky.invoiceNumber?.trim()) { toast.error('Enter Invoice No. at top — it is required'); return; }
+    // ── PRE-FLIGHT CHECKS — each failure names its exact cause ──
+    if (cart.length === 0) { toastWarn('Cart is empty — add at least one item before submitting'); return; }
+
+    const isInternal = sticky.invoiceReason === 'INTERNAL';
+
+    if (!isInternal && !sticky.supplierId) {
+      toastErr('SUPPLIER is required when reason is "Has Invoice" — select one at the top');
+      return;
+    }
+    if (!isInternal && !sticky.invoiceNumber?.trim()) {
+      toastErr('INVOICE NO. is required when reason is "Has Invoice" — enter it at the top');
+      return;
+    }
+    if (!sticky.purchaseDate) {
+      toastErr('DATE is missing — pick the purchase / received date at the top');
+      return;
+    }
+
+    // Cart-level sanity re-check (in case a draft was restored with bad rows)
+    for (let i = 0; i < cart.length; i++) {
+      const it = cart[i];
+      if (!it.isNew && !it.existingProductId) {
+        toastErr(`Cart row #${i + 1} ("${it.partNumber || it.description || '?'}") has no product linked — remove and re-add it`);
+        return;
+      }
+      if (!it.quantity || it.quantity <= 0) {
+        toastErr(`Cart row #${i + 1} ("${it.partNumber || it.description || '?'}") has invalid quantity — edit the row`);
+        return;
+      }
+      if (!isInternal && (!it.purchasePrice || it.purchasePrice <= 0)) {
+        toastErr(`Cart row #${i + 1} ("${it.partNumber || it.description || '?'}") has price ₹0 but reason is "Has Invoice" — edit the row or switch reason to Internal`);
+        return;
+      }
+    }
+
+    const resolvedRef = isInternal
+      ? (sticky.invoiceNumber?.trim() || INTERNAL_REF())
+      : sticky.invoiceNumber.trim();
+    const supplierIdNum = sticky.supplierId ? parseInt(sticky.supplierId) : null;
+
+    if (isInternal) {
+      toastInfo(`Internal stock — reference "${resolvedRef}" will be used${supplierIdNum ? '' : ' (no supplier)'}`, 3000);
+    }
+
     if (!window.confirm(`Submit ${cart.length} item${cart.length > 1 ? 's' : ''} to QC?`)) return;
     setSubmitting(true);
     const createdProductsTrack = [];
     try {
+      const token = localStorage.getItem('token');
+      if (!token) { toastErr('You are not logged in — session token missing. Log in again.'); setSubmitting(false); return; }
+
       const stocks = [];
-      for (const it of cart) {
+      for (let i = 0; i < cart.length; i++) {
+        const it = cart[i];
         let pid;
         if (it.isNew) {
-          const r = await axios.post('/api/products', { categoryId: it.categoryId, partNumber: it.partNumber, description: it.description, packageType: it.packageType || null, manufacturerPn: it.manufacturerPn || null, hsnCode: it.hsnCode || null, gstPercent: it.gstPercent ? parseFloat(it.gstPercent) : null, unitPrice: it.purchasePrice, supplierId: parseInt(sticky.supplierId), rackId: it.rackId, boxId: it.boxId, isActive: true }, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+          // ── PRODUCT REGISTRATION — name the exact row that fails ──
+          let r;
+          try {
+            r = await axios.post('/api/products', { categoryId: it.categoryId, partNumber: it.partNumber, description: it.description, packageType: it.packageType || null, manufacturerPn: it.manufacturerPn || null, make: it.make || null, hsnCode: it.hsnCode || null, gstPercent: it.gstPercent ? parseFloat(it.gstPercent) : null, unitPrice: it.purchasePrice || 0, supplierId: supplierIdNum, rackId: it.rackId, boxId: it.boxId, isActive: true }, { headers: { Authorization: `Bearer ${token}` } });
+          } catch (pe) {
+            throw new Error(`Row #${i + 1} "${it.partNumber || it.description || 'new item'}" — product registration failed: ${apiErr(pe)}`);
+          }
           pid = r.data?.data?.productId || r.data?.productId;
-          if (!pid) throw new Error('Catalog exception parsing part registration row.');
+          if (!pid) throw new Error(`Row #${i + 1} "${it.partNumber || it.description || 'new item'}" — server did not return a product ID`);
           createdProductsTrack.push(pid);
           if (it.unitOfMeasure) setUnit(pid, it.unitOfMeasure);
         } else { pid = it.existingProductId; }
-        stocks.push({ productId: pid, supplierId: parseInt(sticky.supplierId), quantity: it.quantity, purchasePrice: it.purchasePrice, purchaseDate: sticky.purchaseDate, rackId: it.rackId, boxId: it.boxId, referenceNumber: sticky.invoiceNumber, notes: it.remarks, hsnCode: it.hsnCode, gstPercent: it.gstPercent ? parseFloat(it.gstPercent) : null });
+        stocks.push({ productId: pid, supplierId: supplierIdNum, quantity: it.quantity || 0, purchasePrice: it.purchasePrice || 0, purchaseDate: sticky.purchaseDate, rackId: it.rackId, boxId: it.boxId, referenceNumber: resolvedRef, notes: it.remarks, hsnCode: it.hsnCode, gstPercent: it.gstPercent ? parseFloat(it.gstPercent) : null });
       }
-      if (stocks.length === 1) { await axios.post('/api/stock/in', stocks[0], { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }); }
-      else { await axios.post('/api/stock/in/bulk', { supplierId: parseInt(sticky.supplierId), invoiceNumber: sticky.invoiceNumber, items: stocks }, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }); }
-      toast.success(`🎉 ${cart.length} sent to QC!`, { position: 'top-center' });
+
+      if (stocks.length === 1) {
+        await axios.post('/api/stock/in', stocks[0], { headers: { Authorization: `Bearer ${token}` } });
+      } else {
+        // ── BULK: server returns per-item success/failure — report each failed item ──
+        const br = await axios.post('/api/stock/in/bulk', { supplierId: supplierIdNum, invoiceNumber: resolvedRef, items: stocks }, { headers: { Authorization: `Bearer ${token}` } });
+        const bulk = br.data?.data;
+        if (bulk && bulk.failedCount > 0) {
+          const fails = (bulk.results || []).filter(x => !x.success);
+          fails.slice(0, 3).forEach((f, k) => {
+            toastErr(`Item failed: ${f.partNumber || 'productId ' + f.productId || '#' + (k + 1)} — ${f.errorMessage || 'unknown reason'}`, 8000);
+          });
+          if (fails.length > 3) toastErr(`…and ${fails.length - 3} more items failed. Check "My Batches".`, 8000);
+          if (bulk.successCount > 0) toastWarn(`Partial: ${bulk.successCount} succeeded, ${bulk.failedCount} failed`, 6000);
+          if (bulk.successCount === 0) throw new Error('All items failed — nothing was stocked in');
+        }
+      }
+
+      toastOk(`🎉 ${cart.length} item${cart.length > 1 ? 's' : ''} sent to QC! Ref: ${resolvedRef}`, 3000);
       setCart([]); setRow(blank); setCatText(''); setSelectedCatId(''); setSelectedProdId(''); clearDraft(); setDraftSavedAt(null);
       await reloadAll(); onSuccess();
     } catch (e) {
-      for (const p of createdProductsTrack) { try { await axios.delete(`/api/products/${p}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }); } catch {} }
-      toast.error(e.response?.data?.message || e.message || 'Failed processing transaction', { autoClose: 5000 });
+      // ── ROLLBACK any products created before the failure ──
+      if (createdProductsTrack.length > 0) {
+        toastWarn(`Rolling back ${createdProductsTrack.length} newly created product(s)…`, 3000);
+        for (const p of createdProductsTrack) {
+          try { await axios.delete(`/api/products/${p}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }); }
+          catch (de) { toastErr(`Rollback failed for productId ${p} — delete it manually. (${apiErr(de)})`, 8000); }
+        }
+      }
+      // ── NAME THE REAL CAUSE by HTTP status ──
+      const status = e?.response?.status;
+      let msg = apiErr(e, 'Failed processing transaction');
+      if (status === 400) msg = `Backend rejected the data → ${msg}`;
+      else if (status === 401) msg = 'Session expired — log in again';
+      else if (status === 403) msg = `Permission denied — your role cannot do this. (${msg})`;
+      else if (status === 404) msg = `Endpoint / record not found → ${msg}`;
+      else if (status === 409) msg = `Conflict → ${msg}`;
+      else if (status >= 500)  msg = `Server error (${status}) → ${msg}`;
+      toastErr(msg, 8000);
     } finally { setSubmitting(false); }
   };
 
@@ -1154,7 +1089,8 @@ const AddStockPage = ({ onSuccess, products, suppliers, racks, categories, reloa
   const currentGst    = currentBase * (parseFloat(row.gstPercent) || 0) / 100;
   const currentTotal  = currentBase + currentGst;
 
-  const invoiceMissing = !sticky.invoiceNumber?.trim();
+  const isInternalReason = sticky.invoiceReason === 'INTERNAL';
+  const invoiceMissing = !isInternalReason && !sticky.invoiceNumber?.trim();
 
   return (
     <div className="sx-view">
@@ -1172,15 +1108,27 @@ const AddStockPage = ({ onSuccess, products, suppliers, racks, categories, reloa
         <div className="sx-draft-banner">
           <div className="sx-draft-icon"><FiRotateCw size={16} /></div>
           <div className="sx-draft-info"><div className="sx-draft-title">Draft found — {draftFound.cart.length} item{draftFound.cart.length > 1 ? 's' : ''} unsaved</div><div className="sx-draft-sub">Saved {timeAgo(draftFound.savedAt)} · Total ₹{fmtCurrency(draftFound.cart.reduce((s, i) => s + (i.totalValue || 0), 0))}</div></div>
-          <button className="sx-draft-restore" onClick={() => { setCart(draftFound.cart); setSticky(prev => ({ ...prev, ...draftFound.sticky })); setDraftFound(null); toast.success(`Restored ${draftFound.cart.length} items from draft`, { position: 'top-center' }); }}><FiRotateCw size={12} /> Restore</button>
-          <button className="sx-draft-discard" onClick={() => { clearDraft(); setDraftFound(null); toast.info('Draft discarded'); }}><FiX size={12} /> Discard</button>
+          <button className="sx-draft-restore" onClick={() => { setCart(draftFound.cart); setSticky(prev => ({ ...prev, ...draftFound.sticky })); setDraftFound(null); toastOk(`Restored ${draftFound.cart.length} items from draft`, 2500); }}><FiRotateCw size={12} /> Restore</button>
+          <button className="sx-draft-discard" onClick={() => { clearDraft(); setDraftFound(null); toastInfo('Draft discarded'); }}><FiX size={12} /> Discard</button>
         </div>
       )}
 
       <div className="sxt-sticky-bar sx-animate-in">
-        <div className="sxt-sticky-item"><label>SUPPLIER <span className="sx-req">*</span></label><select className="sxt-sticky-input" value={sticky.supplierId} onChange={e => setSticky({ ...sticky, supplierId: e.target.value })}><option value="">Select supplier</option>{suppliers.map(s => <option key={s.supplierId} value={s.supplierId}>{s.supplierName}</option>)}</select></div>
-        {/* ★ TASK 2: invoice mandatory — red star + amber warn while empty */}
-        <div className="sxt-sticky-item"><label>INVOICE NO. <span className="sx-req">*</span></label><input className={`sxt-sticky-input ${invoiceMissing ? 'sxt-sticky-input-warn' : ''}`} value={sticky.invoiceNumber} onChange={e => setSticky({ ...sticky, invoiceNumber: e.target.value })} placeholder="INV-001 (required)" /></div>
+        <div className="sxt-sticky-item"><label>SUPPLIER {!isInternalReason && <span className="sx-req">*</span>}</label><select className="sxt-sticky-input" value={sticky.supplierId} onChange={e => setSticky({ ...sticky, supplierId: e.target.value })}><option value="">{isInternalReason ? 'Select supplier (optional)' : 'Select supplier'}</option>{suppliers.map(s => <option key={s.supplierId} value={s.supplierId}>{s.supplierName}</option>)}</select></div>
+        {/* Reason dropdown — INVOICE requires a number, INTERNAL auto-fills a ref */}
+        <div className="sxt-sticky-item"><label>REASON</label><select className="sxt-sticky-input" value={sticky.invoiceReason} onChange={e => { const reason = e.target.value; setSticky(prev => ({ ...prev, invoiceReason: reason, invoiceNumber: reason === 'INTERNAL' ? INTERNAL_REF() : '' })); if (reason === 'INTERNAL') toastInfo('Internal mode: supplier & price optional, invoice auto-generated', 3500); }}>{REASON_OPTIONS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}</select></div>
+        {/* INVOICE → required & editable · INTERNAL → auto-filled & locked */}
+        <div className="sxt-sticky-item">
+          <label>INVOICE NO. {!isInternalReason && <span className="sx-req">*</span>}</label>
+          <input
+            className={`sxt-sticky-input ${invoiceMissing ? 'sxt-sticky-input-warn' : ''}`}
+            value={sticky.invoiceNumber}
+            onChange={e => setSticky({ ...sticky, invoiceNumber: e.target.value })}
+            placeholder={isInternalReason ? 'Auto: INTERNAL-YYYYMMDD' : 'INV-001 (required)'}
+            disabled={isInternalReason}
+            title={isInternalReason ? 'Auto-filled for internal / already-in-store stock' : ''}
+          />
+        </div>
         <div className="sxt-sticky-item"><label>DATE</label><input type="date" className="sxt-sticky-input" value={sticky.purchaseDate} onChange={e => setSticky({ ...sticky, purchaseDate: e.target.value })} /></div>
       </div>
 
@@ -1207,7 +1155,6 @@ const AddStockPage = ({ onSuccess, products, suppliers, racks, categories, reloa
 
         {activeWorkflow === 'fresh' && (
           <div className="sxa-workflow-pane">
-            {/* ★ TASK 2: Part Number & Description now OPTIONAL */}
             <div className="sxa-form-row">
               <div className="sxa-field" style={{ flex: '1' }}><label>New Part Number <span className="sx-optional">optional</span></label><input className="sxa-input" value={row.partNumber} onChange={e => handleProductFieldChange('partNumber', e.target.value)} placeholder="e.g. PIC16F913" /></div>
               <div className="sxa-field" style={{ flex: '2' }}><label>Description <span className="sx-optional">optional</span></label><input className="sxa-input" value={row.description} onChange={e => handleProductFieldChange('description', e.target.value)} placeholder="Item description…" /></div>
@@ -1232,13 +1179,14 @@ const AddStockPage = ({ onSuccess, products, suppliers, racks, categories, reloa
         <div className="sxa-form-row">
           <div className="sxa-field" style={{ flex: '1 1 100px' }}><label>Qty <span className="sx-req">*</span></label><input type="number" className="sxa-input" value={row.quantity} onChange={e => handleProductFieldChange('quantity', e.target.value)} placeholder="0" /></div>
           <div className="sxa-field" style={{ flex: '1 1 100px' }}><label>Unit</label><select className="sxa-input" value={row.unitOfMeasure} onChange={e => handleProductFieldChange('unitOfMeasure', e.target.value)}>{UNITS.map(u => <option key={u.v} value={u.v}>{u.label}</option>)}</select></div>
-          <div className="sxa-field" style={{ flex: '1 1 120px' }}><label>Price <span className="sx-req">*</span></label><input type="number" className="sxa-input" value={row.purchasePrice} onChange={e => handleProductFieldChange('purchasePrice', e.target.value)} placeholder="0.00" /></div>
+          <div className="sxa-field" style={{ flex: '1 1 120px' }}><label>Price {!isInternalReason && <span className="sx-req">*</span>}</label><input type="number" className="sxa-input" value={row.purchasePrice} onChange={e => handleProductFieldChange('purchasePrice', e.target.value)} placeholder={isInternalReason ? '0.00 (0 allowed)' : '0.00'} /></div>
           <div className="sxa-field" style={{ flex: '1 1 100px' }}><label>GST %</label><input type="number" className="sxa-input" value={row.gstPercent} onChange={e => handleProductFieldChange('gstPercent', e.target.value)} placeholder="0" disabled={activeWorkflow === 'existing'} /></div>
           <div className="sxa-field" style={{ flex: '1 1 140px' }}><label>Row Total</label><div className="sxa-total-display">₹{fmtCurrency(currentTotal)}</div></div>
         </div>
         <div className="sxa-form-row">
           <div className="sxa-field" style={{ flex: '1 1 140px' }}><label>Package</label><input className="sxa-input" value={row.packageType} onChange={e => handleProductFieldChange('packageType', e.target.value)} placeholder="SMD / DIP" disabled={activeWorkflow === 'existing'} /></div>
           <div className="sxa-field" style={{ flex: '1 1 140px' }}><label>Mfg Part No.</label><input className="sxa-input" value={row.manufacturerPn} onChange={e => handleProductFieldChange('manufacturerPn', e.target.value)} placeholder="Mfg PN" disabled={activeWorkflow === 'existing'} /></div>
+          <div className="sxa-field" style={{ flex: '1 1 140px' }}><label>Make</label><input className="sxa-input" value={row.make} onChange={e => handleProductFieldChange('make', e.target.value)} placeholder="e.g. Espressif" disabled={activeWorkflow === 'existing'} /></div>
           <div className="sxa-field" style={{ flex: '1 1 120px' }}><label>HSN Code</label><input className="sxa-input" value={row.hsnCode} onChange={e => handleProductFieldChange('hsnCode', e.target.value)} placeholder="HSN" disabled={activeWorkflow === 'existing'} /></div>
           <div className="sxa-field" style={{ flex: '1 1 160px' }}><label>Rack</label><select className="sxa-input" value={row.rackId} onChange={e => { handleProductFieldChange('rackId', e.target.value); handleProductFieldChange('boxId', ''); }}><option value="">Select rack</option>{racks.map(r => <option key={r.rackId} value={r.rackId}>{r.rackName || r.rackNumber}</option>)}</select></div>
           <div className="sxa-field" style={{ flex: '1 1 160px' }}><label>Box</label><select className="sxa-input" value={row.boxId} onChange={e => handleProductFieldChange('boxId', e.target.value)} disabled={!row.rackId}><option value="">Select box</option>{boxes.map(b => <option key={b.boxId} value={b.boxId}>{b.boxLabel || b.boxNumber}</option>)}</select></div>
@@ -1284,9 +1232,6 @@ const AddStockPage = ({ onSuccess, products, suppliers, racks, categories, reloa
 
 // ════════════════════════════════════════════════════════════
 // MAIN STOCK IN PAGE
-// ★ TASK 1: persistent hero header — buttons become TABS,
-//   active tab highlighted, no Back buttons anywhere,
-//   click "Stock IN" title to return home
 // ════════════════════════════════════════════════════════════
 const StockIn = () => {
   const { state } = useLocation();
@@ -1306,15 +1251,23 @@ const StockIn = () => {
   useEffect(() => { setPage(1); }, [searchQuery, activeCategory]);
 
   const loadAll = async () => {
-    try {
-      const [p, s, r, c, st] = await Promise.all([
-        productApi.getActive(), supplierApi.getActive(), rackApi.getActive(),
-        categoryApi.getActive(), stockApi.getStockedProducts(),
-      ]);
-      setProducts(p.data.data || []); setSuppliers(s.data.data || []);
-      setRacks(r.data.data || []); setCategories(c.data.data || []);
-      setStockedProducts(st.data.data || []);
-    } catch { toast.error('Failed to load catalog datasets'); }
+    // ★ Load each dataset independently so ONE failure names itself
+    //   instead of one generic "Failed to load catalog datasets"
+    const jobs = [
+      { name: 'Products',   fn: productApi.getActive,          set: setProducts },
+      { name: 'Suppliers',  fn: supplierApi.getActive,         set: setSuppliers },
+      { name: 'Racks',      fn: rackApi.getActive,             set: setRacks },
+      { name: 'Categories', fn: categoryApi.getActive,         set: setCategories },
+      { name: 'Stock list', fn: stockApi.getStockedProducts,   set: setStockedProducts },
+    ];
+    const results = await Promise.allSettled(jobs.map(j => j.fn()));
+    results.forEach((res, i) => {
+      if (res.status === 'fulfilled') {
+        jobs[i].set(res.value.data.data || []);
+      } else {
+        toastErr(`${jobs[i].name} failed to load — ${apiErr(res.reason)}`);
+      }
+    });
   };
 
   const catList = useMemo(() => {
@@ -1349,8 +1302,9 @@ const StockIn = () => {
         return <RejectedPage />;
       case VIEW.BOM:
         return <div className="sx-view"><BomImport onBack={() => setView(VIEW.MAIN)} onItemsReady={() => setView(VIEW.BATCHES)} /></div>;
-      case VIEW.INVOICES:
-        return <PurchaseInvoicePage embedded />;
+		// In renderView():
+		case VIEW.INVOICES:
+		  return <Invoices />;
       default:
         return (
           <div className="sx-view">
@@ -1432,7 +1386,7 @@ const StockIn = () => {
 
   return (
     <div className="sx-page">
-      {/* ★ PERSISTENT HEADER — always visible on every sub-view */}
+      {/* PERSISTENT HEADER — always visible on every sub-view */}
       <div className="sx-hero sx-animate-in">
         <div
           className="sx-hero-content sx-hero-clickable"
@@ -1464,5 +1418,5 @@ const StockIn = () => {
 const exportExcel = async (products) => { /* unchanged */ };
 const exportPDF   = async (products) => { /* unchanged */ };
 
-export { PurchaseInvoicePage };
+
 export default StockIn;

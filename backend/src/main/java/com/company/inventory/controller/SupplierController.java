@@ -1,6 +1,7 @@
 package com.company.inventory.controller;
 
 import com.company.inventory.dto.response.ApiResponse;
+import com.company.inventory.dto.response.SupplierMovementDto;
 import com.company.inventory.dto.response.SupplierProductSummaryDto;
 import com.company.inventory.dto.response.SupplierPurchaseDetailDto;
 import com.company.inventory.entity.Supplier;
@@ -140,5 +141,13 @@ public class SupplierController {
         supplierService.deleteSupplier(id);
         log.info("Decommission process completed safely on target reference tracking context node index point ID: {}. [isActive=false]", id);
         return ResponseEntity.ok(ApiResponse.success("Supplier deleted successfully", null));
+    }
+    @GetMapping("/{id}/stock-movements")
+    @Operation(summary = "Get all stock IN/OUT movements for a supplier's lots")
+    public ResponseEntity<ApiResponse<List<SupplierMovementDto>>> getSupplierMovements(
+            @PathVariable Long id) {
+        log.info("GET /api/suppliers/{}/stock-movements", id);
+        return ResponseEntity.ok(ApiResponse.success("Supplier movements retrieved",
+                supplierService.getSupplierMovements(id)));
     }
 }

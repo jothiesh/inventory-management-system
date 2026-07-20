@@ -1,6 +1,7 @@
 package com.company.inventory.dto.request;
 
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -13,8 +14,7 @@ public class StockInRequest {
     @Positive(message = "Quantity must be positive")
     private BigDecimal quantity;
 
-    @Positive(message = "Purchase price must be positive")
-    private BigDecimal purchasePrice;
+    
 
     private LocalDate purchaseDate;
     private Long rackId;
@@ -25,4 +25,7 @@ public class StockInRequest {
     // ── NEW: HSN / GST ────────────────────────────────────────────
     private String hsnCode;
     private BigDecimal gstPercent;
+    
+    @PositiveOrZero(message = "Purchase price cannot be negative")
+    private BigDecimal purchasePrice;
 }

@@ -62,6 +62,25 @@ export const qcApi = {
     window.URL.revokeObjectURL(url);
   },
 
+  // ── Filled checklist (the real QC record) ────────────────
+  // Save-on-download: fired when the inspector clicks Download. No
+  // inspection exists yet, so this is a draft keyed by batchId; the
+  // decision submit claims it.
+  saveChecklistDraft: (batchId, templateCode, results) =>
+    axiosInstance.post(`${API_BASE}/checklists/draft`, { batchId, templateCode, results }),
+
+  getChecklistDraft: (batchId) =>
+    axiosInstance.get(`${API_BASE}/checklists/draft/${batchId}`),
+
+  // What makes the Approved / Rejected screens show the entered data.
+  getInspectionChecklist: (inspectionId) =>
+    axiosInstance.get(`${API_BASE}/inspections/${inspectionId}/checklist`),
+
+  // ── Alerts: delete (were missing — callers used raw axios) ──
+  deleteAlert: (alertId) => axiosInstance.delete(`${API_BASE}/alerts/${alertId}`),
+  deleteAlertsBulk: (alertIds) =>
+    axiosInstance.delete(`${API_BASE}/alerts/bulk`, { data: alertIds }),
+
   // ── Dashboard ────────────────────────────────────────────
   getDashboardStats: () => axiosInstance.get(`${API_BASE}/dashboard/stats`),
 

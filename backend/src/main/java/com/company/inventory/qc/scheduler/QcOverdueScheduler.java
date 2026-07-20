@@ -12,7 +12,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -59,7 +58,7 @@ public class QcOverdueScheduler {
             for (StockInBatch batch : overdue) {
                 try {
                     long hours = ChronoUnit.HOURS.between(batch.getCreatedAt(), LocalDateTime.now());
-                    Long batchId = getBatchId(batch);
+                    Long batchId = batch.getId();   // ★ was a 3-way reflective lookup — see below
                     
                     log.warn("Batch reference token '{}' is flagged as overdue! Elapsed downtime: {} hours. Primary storage structural lookup identifier: {}", 
                             batch.getBatchRef(), hours, batchId);
@@ -85,52 +84,32 @@ public class QcOverdueScheduler {
         log.debug("QC overdue scheduler periodic run lifecycle block finished clean execution parameters.");
     }
 
-    @Scheduled(cron = "0 0 3 * * *")
+    /**
+     * ★ AUTO-DELETE — daily at 03:00.
+     *
+     * This method existed but did nothing: the body was a comment saying
+     * "wire to QcAlertRepository.purgeOlderThan90Days() if desired". Nothing
+     * was ever wired, so no alert was ever deleted by anything. Combined with
+     * alerts never being resolved on inspection, the table only ever grew.
+     *
+     * Retention is configured on QcAlertService:
+     *      qc.alert.purge.read-after-days=30
+     *      qc.alert.purge.any-after-days=90
+     */
+    @Scheduled(cron = "${qc.alert.purge.cron:0 0 3 * * *}")
     public void purgeOldAlerts() {
-        log.info("Triggering background archival purge cron job execution loop thread context.");
         try {
-            // wire to QcAlertRepository.purgeOlderThan90Days() if desired
-            log.debug("QC historic alerts purge retention daily verification checkpoint complete.");
+            int deleted = alertService.purgeOldAlerts();
+            log.info("QC alert retention purge finished. {} row(s) deleted.", deleted);
         } catch (Exception e) {
-            log.error("Anomalies tracking storage log purge transaction sequence dropped unexpected exception background task: {}", e.getMessage());
+            log.error("QC alert retention purge failed: {}", e.getMessage(), e);
         }
     }
 
-    /**
-     * Try multiple naming conventions for the StockInBatch primary key:
-     *    - getBatchId()
-     *    - getId()
-     *    - getStockInBatchId()
-     * Returns the first one that exists. Returns null if none found.
-     */
-    private static Long getBatchId(StockInBatch batch) {
-        if (batch == null) return null;
-        String[] candidates = { "getBatchId", "getId", "getStockInBatchId" };
-        Class<?> cls = batch.getClass();
-        
-        log.trace("Reflective metadata processing initializing for primary key structural scanning on instance target class mapping: {}", cls.getName());
-        for (String name : candidates) {
-            try {
-                Method m = cls.getMethod(name);
-                Object result = m.invoke(batch);
-                
-                if (result instanceof Long) {
-                    log.trace("Reflective data lookup succeeded matching candidate accessor name pattern: '{}()'", name);
-                    return (Long) result;
-                }
-                if (result instanceof Number) {
-                    log.trace("Reflective type numeric translation layer applied matching candidate accessor name pattern: '{}()'", name);
-                    return ((Number) result).longValue();
-                }
-            } catch (NoSuchMethodException ignored) {
-                // quietly pass onto next strategy permutation node 
-            } catch (Exception e) {
-                log.error("Reflective inspection processing failure inside signature discovery step on property candidate naming pattern: '{}()'. Exception context: {}", 
-                        name, e.getMessage());
-                return null;
-            }
-        }
-        log.error("Dynamic reflective compilation breakdown error: Failed to discover or resolve a valid data type mapping primary key accessor matching structural signatures array elements.");
-        return null;
-    }
+    // ★ REMOVED: getBatchId(StockInBatch) — a reflective probe trying
+    //   getBatchId() / getId() / getStockInBatchId() in turn. StockInBatch has
+    //   exactly one id accessor, getId(), and it is compile-time visible right
+    //   here. The reflection could only ever return what batch.getId() returns,
+    //   while costing a Method lookup per batch per hour and turning a
+    //   rename into a silent runtime null instead of a build error.
 }

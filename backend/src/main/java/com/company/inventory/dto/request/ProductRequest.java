@@ -12,7 +12,7 @@ public class ProductRequest {
     private String specification;
     private String alternativeComponent;
     private String manufacturerPn;
-
+    private String make;
     private Long categoryId;
     private Long supplierId;
 

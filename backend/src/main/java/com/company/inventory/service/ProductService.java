@@ -250,6 +250,7 @@ public class ProductService {
         product.setSpecification(request.getSpecification());
         product.setAlternativeComponent(request.getAlternativeComponent());
         product.setManufacturerPn(request.getManufacturerPn());
+        product.setMake(request.getMake());
         product.setUnitPrice(request.getUnitPrice() != null ? request.getUnitPrice() : BigDecimal.ZERO);
         product.setMinStockLevel(request.getMinStockLevel() != null ? request.getMinStockLevel() : 10);
         product.setRemarks(request.getRemarks());

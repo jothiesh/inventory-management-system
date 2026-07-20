@@ -23,7 +23,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @SecurityRequirement(name = "Bearer Authentication")
 @Tag(name = "Racks", description = "Rack management APIs")
-@Slf4j // <-- Injected for granular diagnostic log streams
+@Slf4j
 public class RackController {
 
     private final RackService rackService;
@@ -32,67 +32,59 @@ public class RackController {
     @GetMapping
     @Operation(summary = "Get all racks", description = "Retrieve all racks")
     public ResponseEntity<ApiResponse<List<Rack>>> getAllRacks() {
-        log.info("REST Request received: GET /api/racks | Fetching complete global warehouse structural framework layout map.");
         List<Rack> racks = rackService.getAllRacks();
-        log.debug("Successfully pulled {} total rack layout lines from infrastructure services.", racks.size());
         return ResponseEntity.ok(ApiResponse.success("Racks retrieved successfully", racks));
     }
 
     @GetMapping("/active")
     @Operation(summary = "Get active racks", description = "Retrieve only active racks")
     public ResponseEntity<ApiResponse<List<Rack>>> getActiveRacks() {
-        log.info("REST Request received: GET /api/racks/active | Pulling un-archived spatial storage framework items.");
         List<Rack> racks = rackService.getActiveRacks();
-        log.debug("Found {} operational un-decommissioned warehouse frameworks.", racks.size());
         return ResponseEntity.ok(ApiResponse.success("Active racks retrieved successfully", racks));
     }
 
     @GetMapping("/{id}")
     @Operation(summary = "Get rack by ID", description = "Retrieve a specific rack by ID")
     public ResponseEntity<ApiResponse<Rack>> getRackById(@PathVariable Long id) {
-        log.info("REST Request received: GET /api/racks/{} | Resolving standalone specific framework row element.", id);
         Rack rack = rackService.getRackById(id);
         return ResponseEntity.ok(ApiResponse.success("Rack retrieved successfully", rack));
     }
 
     @PostMapping
-    @Operation(summary = "Create rack", description = "Create a new rack")
+    @Operation(summary = "Create rack", description = "Create a new rack (rack number auto-generated when omitted)")
     public ResponseEntity<ApiResponse<Rack>> createRack(
             @RequestBody RackRequest req,
             Authentication authentication) {
-        log.info("REST Request received: POST /api/racks | Spawning a new spatial hardware configuration structure. Alphanumeric Code: '{}', Designation: '{}'", 
-                req.rackNumber(), req.rackName());
-                
+        // rackNumber may be null/blank — RackService auto-generates R<n>
+        log.info("POST /api/racks | number='{}', name='{}'", req.rackNumber(), req.rackName());
+
         User currentUser = authService.getCurrentUser(authentication.getName());
-        log.trace("Extracted matching workflow user session key principal username context: '{}'", currentUser.getUsername());
-        
+
         Rack rack = rackService.createRack(
                 req.rackNumber(), req.rackName(), req.location(), req.capacity(), currentUser
         );
-        log.info("New storage framework successfully persisted to schema spaces. Allocated entry key ID index: {}", rack.getRackId());
+        log.info("Rack created, id={}, number={}", rack.getRackId(), rack.getRackNumber());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Rack created successfully", rack));
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Update rack", description = "Update an existing rack")
+    @Operation(summary = "Update rack", description = "Update an existing rack (blank rack number keeps existing)")
     public ResponseEntity<ApiResponse<Rack>> updateRack(
             @PathVariable Long id,
             @RequestBody RackRequest req) {
-        log.info("REST Request received: PUT /api/racks/{} | Processing structural updates overlay attributes payload. Alphanumeric sequence code target: '{}'", id, req.rackNumber());
+        log.info("PUT /api/racks/{} | number='{}'", id, req.rackNumber());
         Rack rack = rackService.updateRack(
                 id, req.rackNumber(), req.rackName(), req.location(), req.capacity()
         );
-        log.info("Framework boundary metrics modified successfully inside database layers for ID: {}", id);
         return ResponseEntity.ok(ApiResponse.success("Rack updated successfully", rack));
     }
 
     @DeleteMapping("/{id}")
     @Operation(summary = "Delete rack", description = "Soft delete a rack")
     public ResponseEntity<ApiResponse<Void>> deleteRack(@PathVariable Long id) {
-        log.warn("REST Request received: DELETE /api/racks/{} | Commencing warehouse space soft decommissioning logic workflow path.", id);
+        log.warn("DELETE /api/racks/{}", id);
         rackService.deleteRack(id);
-        log.info("Soft-decommission process successfully processed on core database indices framework configuration node target ID: {}", id);
         return ResponseEntity.ok(ApiResponse.success("Rack deleted successfully", null));
     }
 }

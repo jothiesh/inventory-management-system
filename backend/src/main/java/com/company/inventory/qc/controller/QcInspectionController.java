@@ -6,6 +6,7 @@ import com.company.inventory.qc.entity.QcInspection;
 import com.company.inventory.qc.exception.QcException;
 import com.company.inventory.qc.repository.QcInspectionRepository;
 import com.company.inventory.qc.service.QcInspectionService;
+import com.company.inventory.qc.service.QcFilledChecklistService;
 import com.company.inventory.qc.service.QcTemplateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -40,6 +41,7 @@ public class QcInspectionController {
     private final QcInspectionService    inspectionService;
     private final QcTemplateService      templateService;
     private final QcInspectionRepository inspectionRepo;
+    private final QcFilledChecklistService filledChecklistService;
 
     // ── QUEUE ─────────────────────────────────────────────────
     @GetMapping("/queue")
@@ -98,6 +100,42 @@ public class QcInspectionController {
             @RequestParam(defaultValue = "false") boolean generatePdf) {
         QcDecisionResponse resp = inspectionService.perItemDecision(req, generatePdf);
         return ResponseEntity.ok(ApiResponse.success("QC decisions recorded", resp));
+    }
+
+    // ── FILLED CHECKLIST ──────────────────────────────────────
+    // ★ Save-on-download: the QC Inspection screen posts here when the
+    //   inspector clicks Download, so the filled form is persisted at that
+    //   moment. No separate Save button, and no inspection id needed yet —
+    //   the row is a draft keyed by batchId until the decision is submitted.
+    @PostMapping("/checklists/draft")
+    @PreAuthorize("hasAnyAuthority('OWNER','STORE_MANAGER','QC')")
+    @Operation(summary = "Save the filled checklist for a batch (fired on Download)")
+    public ResponseEntity<ApiResponse<FilledChecklistDto>> saveChecklistDraft(
+            @RequestBody SaveChecklistRequest req) {
+        FilledChecklistDto dto = filledChecklistService.saveDraft(
+                req.getBatchId(), req.getTemplateCode(), req.getResults());
+        return ResponseEntity.ok(ApiResponse.success("Checklist saved", dto));
+    }
+
+    // ★ Read the draft back if the inspector reloads mid-inspection.
+    @GetMapping("/checklists/draft/{batchId}")
+    @PreAuthorize("hasAnyAuthority('OWNER','STORE_MANAGER','QC')")
+    @Operation(summary = "Get the saved checklist draft for a batch")
+    public ResponseEntity<ApiResponse<FilledChecklistDto>> getChecklistDraft(
+            @PathVariable Long batchId) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Checklist draft", filledChecklistService.findDraftForBatch(batchId)));
+    }
+
+    // ★ This is what makes the Approved / Rejected screens show the real
+    //   entered data instead of an empty form.
+    @GetMapping("/inspections/{inspectionId}/checklist")
+    @PreAuthorize("hasAnyAuthority('OWNER','STORE_MANAGER','QC')")
+    @Operation(summary = "Get the saved filled checklist for an inspection")
+    public ResponseEntity<ApiResponse<FilledChecklistDto>> getChecklist(
+            @PathVariable Long inspectionId) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Filled checklist", filledChecklistService.findForInspection(inspectionId)));
     }
 
     // ── PDF DOWNLOAD ──────────────────────────────────────────

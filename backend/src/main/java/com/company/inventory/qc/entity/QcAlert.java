@@ -5,8 +5,33 @@ import lombok.*;
 
 import java.time.LocalDateTime;
 
+/**
+ * A QC alert. Fire-once.
+ *
+ * ★ REVERTED from the backoff model (occurrenceCount / lastOccurredAt /
+ *   nextDueAt). Those columns are dropped by V3 — see sql/V3.
+ *
+ * The rule is now the simplest one that can work:
+ *
+ *   · an event happens  -> ONE alert row
+ *   · it never re-raises, never escalates, never nags
+ *   · the condition clears (batch leaves PENDING_QC) -> the row is deleted
+ *   · anything left over is purged on a retention schedule
+ *
+ * Identity of "the same event" is (batch_id, alert_type) for batch-scoped
+ * alerts and (inspection_id, alert_type) for inspection-scoped ones. A second
+ * alert matching that identity is skipped — which is what makes it fire-once
+ * even though QcOverdueScheduler runs every hour.
+ */
 @Entity
-@Table(name = "qc_alert")
+@Table(
+    name = "qc_alert",
+    indexes = {
+        @Index(name = "ix_qa_batch_type",      columnList = "batch_id,alert_type"),
+        @Index(name = "ix_qa_inspection_type", columnList = "inspection_id,alert_type"),
+        @Index(name = "ix_qa_created",         columnList = "created_at")
+    }
+)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -21,12 +46,12 @@ public class QcAlert {
 
     @Column(name = "alert_type", nullable = false, length = 40)
     private String alertType;
-    // Values: NEW_BATCH, REJECTED, HOLD_REMINDER, OVERDUE
+    // NEW_BATCH, REJECTED, HOLD_REMINDER, OVERDUE, STOCK_OUT_*
 
     @Column(name = "severity", nullable = false, length = 10)
     @Builder.Default
     private String severity = "MEDIUM";
-    // Values: HIGH, MEDIUM, LOW
+    // HIGH, MEDIUM, LOW
 
     @Column(name = "title", nullable = false, length = 200)
     private String title;
@@ -53,7 +78,7 @@ public class QcAlert {
     @PrePersist
     void onCreate() {
         if (createdAt == null) createdAt = LocalDateTime.now();
-        if (isRead == null) isRead = false;
-        if (severity == null) severity = "MEDIUM";
+        if (isRead == null)    isRead = false;
+        if (severity == null)  severity = "MEDIUM";
     }
 }

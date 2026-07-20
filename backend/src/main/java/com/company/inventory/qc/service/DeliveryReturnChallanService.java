@@ -261,7 +261,10 @@ public class DeliveryReturnChallanService {
         replacementBatch.setReceivedDate(receivedDate != null ? receivedDate : LocalDate.now());
         replacementBatch.setTotalQty(totalReplacementQty);
         replacementBatch.setItemCount(dc.getItems().size());
-        replacementBatch.setQcStatus("PENDING_QC");
+        // ★ CHANGED: was PENDING_QC. The replacement now skips re-inspection —
+        //   it goes straight to stock and shows in history as approved. Setting
+        //   QC_APPROVED keeps it out of the QC queue.
+        replacementBatch.setQcStatus("QC_APPROVED");
         replacementBatch.setParentBatch(originalBatch);
         replacementBatch.setReplacementRound(originalBatch.getReplacementRound() + 1);
         replacementBatch.setDc(dc);
@@ -270,6 +273,108 @@ public class DeliveryReturnChallanService {
                 + " · DC# " + dc.getDcNumber());
         StockInBatch savedReplacement = batchRepo.save(replacementBatch);
         log.info("Replacement batch saved: id={}, ref={}", savedReplacement.getId(), savedReplacement.getBatchRef());
+
+        // ═══════════════════════════════════════════════════════════════
+        // ★ THE FIX — create real Lot rows for the replacement and release
+        //   them straight into current_stock.
+        //
+        //   Before this, markReplacementReceived made a new StockInBatch but
+        //   NEVER created any Lot rows for it. So getLotsForBatch(-R1) returned
+        //   empty: the batch showed in the queue but had nothing inside, and
+        //   accepting it released nothing to stock.
+        //
+        //   Each DC line item carries the original rejected lot (item.getLot())
+        //   and the replacement qty (item.getQtyReturned()). We clone product /
+        //   rack / box / price / hsn / gst from that original lot, REUSE its lot
+        //   number, link the clone to the replacement batch, then release it.
+        // ═══════════════════════════════════════════════════════════════
+        int stockedCount = 0;
+        for (DeliveryReturnChallanItem dcItem : dc.getItems()) {
+            Lot origLot = dcItem.getLot();
+            if (origLot == null) {
+                log.warn("DC item {} has no original lot — cannot create replacement lot", dcItem.getId());
+                continue;
+            }
+            BigDecimal qty = dcItem.getQtyReturned() != null
+                    ? dcItem.getQtyReturned() : BigDecimal.ZERO;
+            if (qty.compareTo(BigDecimal.ZERO) <= 0) {
+                log.warn("DC item {} has qty {} — skipping", dcItem.getId(), qty);
+                continue;
+            }
+
+            Lot rep = new Lot();
+            // ★ FIX: lot_number has a UNIQUE constraint (see Lot.java) — reusing the
+            //   original number throws "Duplicate entry ... for key lots.UK_...".
+            //   Suffix with the replacement round: LOT-...-R1 / -R2. Still traceable
+            //   to the original, but unique. Guard length against the column's 50 chars.
+            int round = savedReplacement.getReplacementRound();
+            String baseLotNo = origLot.getLotNumber();
+            String repLotNo  = baseLotNo + "-R" + round;
+            if (repLotNo.length() > 50) {                       // column is length=50
+                repLotNo = baseLotNo.substring(0, 47 - String.valueOf(round).length())
+                         + "-R" + round;
+            }
+            rep.setLotNumber(repLotNo);                         // ★ unique replacement number
+            rep.setProduct(origLot.getProduct());
+            rep.setSupplier(origLot.getSupplier());
+            rep.setPurchaseQuantity(qty);
+            rep.setInitialQuantity(qty);
+            rep.setRemainingQuantity(qty);
+            rep.setPurchasePrice(origLot.getPurchasePrice());
+            rep.setPurchaseDate(savedReplacement.getReceivedDate() != null
+                    ? savedReplacement.getReceivedDate() : LocalDate.now());
+            rep.setRack(origLot.getRack());
+            rep.setBox(origLot.getBox());
+            rep.setStatus(Lot.LotStatus.Active);
+            rep.setReferenceNumber(savedReplacement.getInvoiceNo());
+            rep.setHsnCode(origLot.getHsnCode());
+            rep.setGstPercent(origLot.getGstPercent());
+            rep.setGstAmount(origLot.getGstAmount());
+            rep.setNotes("Replacement lot for " + originalBatch.getBatchRef()
+                    + " · DC# " + dc.getDcNumber());
+            rep.setStockInBatch(savedReplacement);             // ★ link to -R1
+            rep.setCreatedBy(actor);
+            // fresh lot: no QC decision — it never goes through QC again
+            Lot savedRep = lotRepo.save(rep);
+
+            // ★ push straight into current_stock
+            stockBridge.releaseLotToStock(savedRep, qty);
+            stockedCount++;
+            log.info("  Replacement lot created id={}, lotNo={}, qty={} → released to stock",
+                    savedRep.getLotId(), savedRep.getLotNumber(), qty);
+        }
+        log.info("Replacement stocked: {} lot(s) released to current_stock for batch {}",
+                stockedCount, savedReplacement.getBatchRef());
+
+        // ═══════════════════════════════════════════════════════════════
+        // ★ INSPECTION HISTORY RECORD
+        //   The replacement skips the QC queue, so no inspection is created by
+        //   the normal flow — and it would be invisible in Inspection History.
+        //   We write ONE auto-approved inspection row here so the replacement
+        //   still appears in history with a clear "skipped re-QC" note.
+        // ═══════════════════════════════════════════════════════════════
+        try {
+            QcInspection insp = new QcInspection();
+            insp.setBatch(savedReplacement);
+            insp.setInvoiceNo(savedReplacement.getInvoiceNo());
+            insp.setSupplierName(savedReplacement.getSupplierName());
+            insp.setReceivedDate(savedReplacement.getReceivedDate() != null
+                    ? savedReplacement.getReceivedDate() : LocalDate.now());
+            insp.setLotCount(stockedCount);
+            insp.setOverallDecision("ACCEPTED");
+            insp.setOverallRemarks(String.format(
+                    "Auto-approved replacement for %s (DC# %s) — skipped re-QC, stocked directly.",
+                    originalBatch.getBatchRef(), dc.getDcNumber()));
+            insp.setInspectedBy(actor);
+            insp.setInspectedAt(LocalDateTime.now());
+            inspectionRepo.save(insp);
+            log.info("Inspection-history record written for replacement batch {}",
+                    savedReplacement.getBatchRef());
+        } catch (Exception e) {
+            // never fail the replacement just because the history row didn't save
+            log.warn("Could not write inspection-history record for replacement {}: {}",
+                    savedReplacement.getBatchRef(), e.getMessage());
+        }
 
         // ── Update DC ─────────────────────────────────────────
         dc.setStatus("REPLACEMENT_RECEIVED");
@@ -304,24 +409,14 @@ public class DeliveryReturnChallanService {
                 savedReplacement.getId(), "BATCH", actor);
 
         addTimeline(savedReplacement.getId(), "STOCK_IN",
-                "Replacement Stock IN",
-                String.format("%.0f units from %s · Original: %s",
-                        totalReplacementQty.doubleValue(),
-                        originalBatch.getSupplierName(), originalBatch.getBatchRef()),
+                "Replacement Stocked",
+                String.format("%.0f units added to current stock · Original: %s (skipped re-QC)",
+                        totalReplacementQty.doubleValue(), originalBatch.getBatchRef()),
                 originalBatch.getId(), "BATCH", actor);
 
-        // ── Alert ─────────────────────────────────────────────
-        try {
-            alertService.createAlert("NEW_BATCH", "MEDIUM",
-                    "Replacement Batch Ready for QC",
-                    String.format("Replacement for %s arrived — %s · %.0f units",
-                            originalBatch.getBatchRef(), replacementBatch.getBatchRef(),
-                            totalReplacementQty.doubleValue()),
-                    null, null);
-            log.info("QC alert created for replacement batch {}", replacementBatch.getBatchRef());
-        } catch (Exception e) {
-            log.warn("Alert creation failed for replacement batch: {}", e.getMessage());
-        }
+        // ★ No "Ready for QC" alert — the replacement skips QC and is already
+        //   stocked. Raising a QC alert would point at a batch that never
+        //   enters the queue.
 
         log.info("=== REPLACEMENT RECEIVED COMPLETE === newBatch={} for DC={}",
                 replacementBatch.getBatchRef(), dc.getDcNumber());

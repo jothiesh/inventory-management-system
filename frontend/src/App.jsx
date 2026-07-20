@@ -19,14 +19,19 @@ import CurrentStock    from './pages/CurrentStock.jsx';
 import Products        from './pages/Products.jsx';
 import Racks           from './pages/Racks.jsx';
 import Reports         from './pages/Reports.jsx';
-import StockIn, { PurchaseInvoicePage } from './pages/StockIn.jsx';
+import StockIn from './pages/StockIn.jsx';
+import Invoices from './pages/Invoices.jsx';
 import StockInRejected from './pages/StockInRejected';
 import StockOut        from './pages/StockOut.jsx';
 import StockOutHistory from './pages/StockOutHistory.jsx';
 import Suppliers       from './pages/Suppliers.jsx';
 import SupplierDetail  from './pages/SupplierDetail.jsx';
 import ExcelImport     from './pages/ExcelImport.jsx';
-import DeliveryChallan from './pages/DeliveryChallan.jsx';
+
+// Delivery Challan (Job Work) — new flow
+import DeliveryChallanCreate from './pages/DeliveryChallanCreate.jsx';
+import DeliveryChallanList   from './pages/DeliveryChallanList.jsx';
+import DeliveryChallanDetail from './pages/DeliveryChallanDetail.jsx';
 
 // Purchase Orders
 import PurchaseOrderList   from './components/purchaseorders/PurchaseOrderList.jsx';
@@ -79,10 +84,14 @@ function App() {
               <Route path="/stock-out"         element={<StockOut/>}/>
               <Route path="/stock-out/history" element={<StockOutHistory/>}/>
               <Route path="/current-stock"     element={<CurrentStock/>}/>
-              <Route path="/delivery-challan"  element={<DeliveryChallan/>}/>
+
+              {/* ── Delivery Challan (Job Work) ── */}
+              <Route path="/delivery-challan"      element={<DeliveryChallanCreate/>}/>
+              <Route path="/delivery-challans"     element={<DeliveryChallanList/>}/>
+              <Route path="/delivery-challans/:id" element={<DeliveryChallanDetail/>}/>
 
               {/* ── Invoices — standalone page (reuses PurchaseInvoicePage from StockIn) ── */}
-              <Route path="/invoices" element={<PurchaseInvoicePage/>}/>
+              <Route path="/invoices" element={<Invoices/>}/>
 
               <Route path="/alerts"       element={<Alerts/>}/>
               <Route path="/reports"      element={<Reports/>}/>

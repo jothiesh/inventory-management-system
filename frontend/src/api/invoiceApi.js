@@ -2,11 +2,12 @@
 // Purchase Invoice + blank-template endpoints for tablet workflow
 import axios from "axios";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3001";
+// Empty default → relative URLs → goes through Vite proxy (/api → localhost:8080) in dev.
+// In production set VITE_API_BASE only if the API is on a different host.
+const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 const inv = axios.create({
   baseURL: `${API_BASE}/api`,
-  withCredentials: true,
 });
 
 inv.interceptors.request.use((cfg) => {
@@ -50,6 +51,12 @@ export const invoiceApi = {
 
   async getById(id) {
     const { data } = await inv.get(`/qc/invoices/${id}`);
+    return data;
+  },
+
+  /** Full invoice detail by invoice NUMBER (handles slashes like "26-27/03146"). */
+  async getByInvoiceNo(invoiceNo) {
+    const { data } = await inv.get("/qc/invoices/by-no", { params: { no: invoiceNo } });
     return data;
   },
 

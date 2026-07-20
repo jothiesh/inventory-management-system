@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -41,6 +42,30 @@ public class QcTemplateService {
     }
 
     // ─── Update stages (Edit Template) ───────────────────────────
+    /**
+     * ★ REWRITTEN — stage ids are now STABLE across an edit.
+     *
+     * The old implementation did:
+     *      template.getStages().clear();  save();  addAll(newStages);  save();
+     *
+     * which deleted every row and inserted fresh ones, so every stage got a new
+     * primary key. That was survivable only while nothing referenced a stage.
+     * It now matters, for two reasons:
+     *
+     *   1. qc_filled_stage_result.stage_id is an FK to qc_checklist_stage.id.
+     *      Recreating stages orphans (or FK-violates) every saved checklist —
+     *      a cosmetic template edit would destroy historical QC records.
+     *   2. The inspection UI keys its "applicable checkpoints" selection by
+     *      stage id, so ids changing underneath silently reset the form.
+     *
+     * The clear()+addAll() was also unsafe on its own: Hibernate may order the
+     * inserts before the deletes and trip (template_id, sl_no) uniqueness.
+     *
+     * New behaviour — reconcile in place:
+     *   · row carrying an existing id  → UPDATE that row
+     *   · row with no id               → INSERT
+     *   · existing row not sent back   → DELETE (orphanRemoval)
+     */
     @Transactional
     public ChecklistTemplateDto updateStages(String categoryCode, List<Map<String, Object>> stagesData) {
         log.info("Updating stages for template category: {}", categoryCode);
@@ -48,30 +73,78 @@ public class QcTemplateService {
         QcChecklistTemplate template = templateRepo.findByCategoryCode(categoryCode)
                 .orElseThrow(() -> QcException.notFound("No checklist template for: " + categoryCode));
 
-        // Clear existing stages
-        template.getStages().clear();
-        templateRepo.save(template);
-
-        // Build new stages from request data
-        List<QcChecklistStage> newStages = new ArrayList<>();
-        int slNo = 1;
-        for (Map<String, Object> sd : stagesData) {
-            String checkPoint = sd.get("checkPoint") != null ? sd.get("checkPoint").toString() : "";
-            if (checkPoint.isBlank()) continue;
-
-            QcChecklistStage stage = new QcChecklistStage();
-            stage.setTemplate(template);
-            stage.setSlNo(slNo++);
-            stage.setStageOperation(sd.get("stageOperation") != null ? sd.get("stageOperation").toString() : "Visual Inspection");
-            stage.setCheckPoint(checkPoint);
-            stage.setAqlLabel(sd.get("aqlLabel") != null ? sd.get("aqlLabel").toString() : "As per AQL");
-            newStages.add(stage);
+        if (stagesData == null || stagesData.isEmpty()) {
+            throw QcException.badRequest("stages list is required and cannot be empty");
         }
 
-        template.getStages().addAll(newStages);
+        // existing rows by id, so we can update rather than replace
+        Map<Long, QcChecklistStage> existing = new LinkedHashMap<>();
+        for (QcChecklistStage s : template.getStages()) {
+            if (s.getId() != null) existing.put(s.getId(), s);
+        }
+
+        List<QcChecklistStage> ordered = new ArrayList<>();
+        int slNo = 1, updated = 0, inserted = 0;
+
+        for (Map<String, Object> sd : stagesData) {
+            String checkPoint = str(sd.get("checkPoint"));
+            if (checkPoint == null || checkPoint.isBlank()) continue;   // skip empty rows
+
+            Long id = asLong(sd.get("id"));
+            QcChecklistStage stage = (id != null) ? existing.get(id) : null;
+
+            if (stage == null) {
+                stage = new QcChecklistStage();
+                stage.setTemplate(template);
+                inserted++;
+            } else {
+                updated++;
+            }
+
+            stage.setSlNo(slNo++);
+            stage.setStageOperation(orDefault(str(sd.get("stageOperation")), "Visual Inspection"));
+            stage.setCheckPoint(checkPoint);
+            stage.setAqlLabel(orDefault(str(sd.get("aqlLabel")), "As per AQL"));
+            stage.setAqlMin(asInt(sd.get("aqlMin")));
+            stage.setAqlMax(asInt(sd.get("aqlMax")));
+            ordered.add(stage);
+        }
+
+        if (ordered.isEmpty()) {
+            throw QcException.badRequest("No stage had a check point — nothing to save");
+        }
+
+        long removed = template.getStages().stream().filter(s -> !ordered.contains(s)).count();
+
+        // Mutate the managed collection in place; orphanRemoval deletes the rest.
+        template.getStages().clear();
+        template.getStages().addAll(ordered);
+
         QcChecklistTemplate saved = templateRepo.save(template);
-        log.info("Updated {} stages for template: {}", newStages.size(), categoryCode);
+        log.info("Template {} reconciled: {} updated, {} inserted, {} removed (stage ids preserved).",
+                categoryCode, updated, inserted, removed);
         return toDto(saved);
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────
+    private static String str(Object o) { return o == null ? null : o.toString().trim(); }
+
+    private static String orDefault(String v, String d) {
+        return (v == null || v.isBlank()) ? d : v;
+    }
+
+    private static Long asLong(Object o) {
+        if (o == null) return null;
+        if (o instanceof Number n) return n.longValue();
+        try { return Long.parseLong(o.toString().trim()); }
+        catch (NumberFormatException e) { return null; }
+    }
+
+    private static Integer asInt(Object o) {
+        if (o == null) return null;
+        if (o instanceof Number n) return n.intValue();
+        try { return Integer.parseInt(o.toString().trim()); }
+        catch (NumberFormatException e) { return null; }
     }
 
     // ─── Mapper ──────────────────────────────────────────────────

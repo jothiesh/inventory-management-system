@@ -132,24 +132,30 @@
 }
 
 /* ── TH ── */
-.qcq-table thead { background: #f8fafc; }
+.qcq-table thead { background: #151E31; }
 .qcq-table thead tr {
-  border-bottom: 2px solid #e2e8f0;
+  border-bottom: 2px solid #151E31;
 }
 .qcq-table th {
   padding: 10px 14px;
-  font-size: 10px; font-weight: 700; color: #64748b;
+  font-size: 10px; font-weight: 700; color: #DCDBD5;
   text-transform: uppercase; letter-spacing: 0.6px;
   text-align: left; white-space: nowrap;
-  border-right: 1px solid #e9edf2;
+  border-right: 1px solid rgba(220, 219, 213, 0.15);
 }
 .qcq-table th:last-child { border-right: none; }
+
+
+
+
 
 /* Column widths */
 .qcq-th-num    { width: 44px; text-align: center !important; }
 .qcq-th-ref    { width: 200px; }
 .qcq-th-cat    { width: 110px; }
-.qcq-th-sup    { /* flex */ }
+/* ★ width:1% + nowrap = shrink-to-fit. The column is now exactly as wide as
+   the longest supplier name, no wider. */
+.qcq-th-sup    { width: 1%; white-space: nowrap; }
 .qcq-th-date   { width: 120px; }
 .qcq-th-items  { width: 70px; text-align: center !important; }
 .qcq-th-time   { width: 90px; }
@@ -194,11 +200,18 @@
 
 .qcq-td-supplier {
   padding: 10px 14px;
-  display: flex; flex-direction: column; gap: 2px;
+  /* ★ was display:flex — a flex <td> is pulled out of table layout, so the
+     cell stopped contributing its content width. That, plus qcq-th-sup having
+     no width (the only auto column), is why SUPPLIER swallowed all the slack
+     left over by the six fixed-width columns and left a huge dead gap. */
+  white-space: nowrap;
 }
 .qcq-supplier-name {
   font-size: 13px; font-weight: 600; color: #1e293b;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+  /* cap only pathological names; normal ones show in full */
+  display: inline-block; max-width: 340px;
+  overflow: hidden; text-overflow: ellipsis; vertical-align: middle;
 }
 .qcq-invoice-num {
   font-size: 10px; font-family: monospace; color: #94a3b8;
@@ -301,34 +314,18 @@
    Append to existing QcQueue.css
    ════════════════════════════════════════════════ */
 
-/* ── Template badge column ── */
-.qcq-th-tpl { width: 100px; }
-
-.qcq-tpl-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  border-radius: 6px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.4px;
-  white-space: nowrap;
-}
-.qcq-tpl-badge.matched {
-  background: #d1fae5;
-  color: #065f46;
-  border: 1px solid #6ee7b7;
-}
-.qcq-tpl-badge.unmatched {
-  background: #fef3c7;
-  color: #92400e;
-  border: 1px solid #fde68a;
-  cursor: pointer;
-}
+/* ★ REMOVED: .qcq-th-tpl / .qcq-tpl-badge — the TEMPLATE column is gone from
+   the queue table. It showed "Select" on every row anyway, because
+   TEMPLATE_CODES is hardcoded to ['IC','MECHANICAL','KITTING','PCB',
+   'ELECTRONIC','LABEL'] while the real categories are TT-SF-PS / TT-ENCL /
+   TT-WIRE, so tryAutoMatch never matched anything.
+   Template is still picked inside the inspection page and the quick-decision
+   modal (.qcq-modal-auto-badge), which is where it belongs. */
 
 /* ── Action group ── */
-.qcq-th-action { width: 220px; text-align: center !important; }
+/* ★ ACTIONS now absorbs the leftover width instead of SUPPLIER, so the
+   slack sits at the natural right edge of the table rather than mid-row. */
+.qcq-th-action { width: auto; min-width: 220px; text-align: right !important; }
 
 .qcq-action-group {
   display: flex;
@@ -680,3 +677,54 @@
   box-shadow: 0 5px 14px rgba(16,185,129,0.35);
   transform: translateY(-1px);
 }
+/* ── Sort + Show toolbar (shared) ── */
+.qca-toolbar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 14px; background: #fff;
+  border: 1px solid #e2e8f0; border-radius: 10px; flex-wrap: wrap;
+}
+.qca-toolbar-group { display: flex; align-items: center; gap: 6px; }
+.qca-toolbar-label {
+  font-size: 11px; font-weight: 700; color: #94a3b8;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.qca-toolbar-select {
+  padding: 6px 10px; border: 1.5px solid #e2e8f0; border-radius: 7px;
+  font-size: 12px; font-weight: 600; color: #475569; background: #fff;
+  cursor: pointer; font-family: inherit; outline: none;
+}
+.qca-toolbar-select:focus, .qca-toolbar-select:hover { border-color: #4f46e5; }
+.qca-sort-dir {
+  width: 30px; height: 30px; border: 1.5px solid #e2e8f0; border-radius: 7px;
+  background: #fff; color: #475569; display: flex; align-items: center;
+  justify-content: center; cursor: pointer; transition: all 0.15s;
+}
+.qca-sort-dir:hover { border-color: #4f46e5; color: #4f46e5; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ★ buttons hug the right edge, matching the ACTIONS header alignment */
+.qcq-action-group { justify-content: flex-end; }

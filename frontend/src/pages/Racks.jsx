@@ -13,7 +13,6 @@ import RackModal from '../components/racks/RackModal';
 import BoxModal from '../components/racks/BoxModal';
 import './Racks.css';
 
-// ─── constants ──────────────────────────────────────────────
 const RACK_COLORS = [
   { bg: '#eef2ff', border: '#818cf8', accent: '#4f46e5' },
   { bg: '#ecfdf5', border: '#6ee7b7', accent: '#059669' },
@@ -30,19 +29,13 @@ const getRackColor = (i) => RACK_COLORS[(i >= 0 ? i : 0) % RACK_COLORS.length];
 const fmtDate = (d) => { if (!d) return '—'; try { return format(new Date(d), 'dd MMM yyyy HH:mm'); } catch { return d; } };
 const fmtDateShort = (d) => { if (!d) return '—'; try { return format(new Date(d), 'dd MMM yyyy'); } catch { return d; } };
 
-// ─── sub-components (kept inside same file for drop-in use) ─
-
 const LoadingState = () => (
   <div className="racks-loading">
     <div className="loading-shelf">
       {[...Array(3)].map((_, i) => (
         <div key={i} className="loading-shelf-row">
           {[...Array(4)].map((_, j) => (
-            <div
-              key={j}
-              className="loading-box-placeholder"
-              style={{ animationDelay: `${(i * 4 + j) * 0.1}s` }}
-            />
+            <div key={j} className="loading-box-placeholder" style={{ animationDelay: `${(i * 4 + j) * 0.1}s` }} />
           ))}
         </div>
       ))}
@@ -187,7 +180,7 @@ const ShelfBox = ({ box, isSelected, delay, onClick, onEdit, onDelete }) => (
 );
 
 const ShelfView = ({ boxes, selectedBox, onBoxClick, onEditBox, onDeleteBox, onCreateBox }) => {
-  const shelfCount = Math.ceil(boxes.length / BOXES_PER_SHELF);
+  const shelfCount = Math.ceil(boxes.length / BOXES_PER_SHELF) || 1;
   return (
     <div className="shelf-container">
       <div className="shelf-frame">
@@ -211,11 +204,7 @@ const ShelfView = ({ boxes, selectedBox, onBoxClick, onEditBox, onDeleteBox, onC
                 ))}
                 {emptySlots > 0 &&
                   [...Array(emptySlots)].map((_, i) => (
-                    <div
-                      key={`e-${i}`}
-                      className="shelf-box shelf-box-empty"
-                      onClick={onCreateBox}
-                    >
+                    <div key={`e-${i}`} className="shelf-box shelf-box-empty" onClick={onCreateBox}>
                       <FiPlus size={18} />
                     </div>
                   ))}
@@ -373,7 +362,6 @@ const BoxDetailDrawer = ({ box, rack, products, loading, expandedIdx, onExpand, 
         <FiX size={18} />
       </button>
     </div>
-
     <div className="drawer-info-bar">
       <div className="drawer-info-item">
         <FiLayers size={13} /><span>Rack: <strong>{rack?.rackNumber}</strong></span>
@@ -385,11 +373,9 @@ const BoxDetailDrawer = ({ box, rack, products, loading, expandedIdx, onExpand, 
         <FiPackage size={13} /><span>Items: <strong>{products.length}</strong></span>
       </div>
     </div>
-
     <div className="drawer-section-title">
       <FiPackage size={14} /><span>Products in this Box</span>
     </div>
-
     <div className="drawer-products">
       {loading ? (
         <div className="drawer-loading">
@@ -414,7 +400,6 @@ const BoxDetailDrawer = ({ box, rack, products, loading, expandedIdx, onExpand, 
         ))
       )}
     </div>
-
     <div className="drawer-section-title">
       <FiLayers size={14} /><span>Rack Details</span>
     </div>
@@ -424,9 +409,7 @@ const BoxDetailDrawer = ({ box, rack, products, loading, expandedIdx, onExpand, 
       <div className="rack-detail-row"><span>Location</span><strong>{rack?.location || '—'}</strong></div>
       <div className="rack-detail-row">
         <span>Status</span>
-        <strong className="rack-status-active">
-          {rack?.isActive !== false ? 'Active' : 'Inactive'}
-        </strong>
+        <strong className="rack-status-active">{rack?.isActive !== false ? 'Active' : 'Inactive'}</strong>
       </div>
       {rack?.createdAt && (
         <div className="rack-detail-row"><span>Created</span><strong>{fmtDateShort(rack.createdAt)}</strong></div>
@@ -442,27 +425,23 @@ const Racks = () => {
   const [selectedRack, setSelectedRack] = useState(null);
   const [boxes, setBoxes] = useState([]);
   const [loading, setLoading] = useState(true);
-
   const [showRackModal, setShowRackModal] = useState(false);
   const [showBoxModal, setShowBoxModal] = useState(false);
   const [editingRack, setEditingRack] = useState(null);
   const [editingBox, setEditingBox] = useState(null);
-
   const [viewMode, setViewMode] = useState('shelf');
   const [searchQuery, setSearchQuery] = useState('');
   const [rackSearch, setRackSearch] = useState('');
-
   const [selectedBox, setSelectedBox] = useState(null);
   const [boxProducts, setBoxProducts] = useState([]);
   const [boxLoading, setBoxLoading] = useState(false);
   const [expandedProduct, setExpandedProduct] = useState(null);
 
-  // ─── data loading ───────────────────────────────────────
-
   const loadRacks = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await rackApi.getAll();
+      // /active filters out soft-deleted racks server-side
+      const response = await rackApi.getActive();
       const rackData = response.data?.data || response.data || [];
       setRacks(rackData);
       if (rackData.length > 0 && !selectedRack) {
@@ -491,21 +470,14 @@ const Racks = () => {
   };
 
   const handleBoxClick = async (box) => {
-    if (selectedBox?.boxId === box.boxId) {
-      setSelectedBox(null);
-      return;
-    }
+    if (selectedBox?.boxId === box.boxId) { setSelectedBox(null); return; }
     setSelectedBox(box);
     setBoxLoading(true);
     setBoxProducts([]);
     setExpandedProduct(null);
-
     try {
       const fetcher = boxApi.getProducts || boxApi.getStock;
-      if (!fetcher) {
-        setBoxProducts([]);
-        return;
-      }
+      if (!fetcher) { setBoxProducts([]); return; }
       const res = await fetcher(box.boxId);
       const products = res?.data?.data || res?.data || [];
       setBoxProducts(Array.isArray(products) ? products : []);
@@ -516,31 +488,35 @@ const Racks = () => {
     }
   };
 
-  // ─── rack handlers ──────────────────────────────────────
-
   const handleCreateRack = () => { setEditingRack(null); setShowRackModal(true); };
   const handleEditRack = (rack) => { setEditingRack(rack); setShowRackModal(true); };
+
   const handleDeleteRack = async (id) => {
     if (!window.confirm('Delete this rack and all its boxes?')) return;
     try {
       await rackApi.delete(id);
       toast.success('Rack deleted');
+
+      // optimistic removal for instant UI feedback
+      setRacks((prev) => prev.filter((r) => r.rackId !== id));
+
       if (selectedRack?.rackId === id) {
         setSelectedRack(null);
         setSelectedBox(null);
+        setBoxes([]);
       }
+
       loadRacks();
     } catch {
       toast.error('Failed to delete rack');
     }
   };
+
   const handleRackModalClose = (refresh) => {
     setShowRackModal(false);
     setEditingRack(null);
     if (refresh) loadRacks();
   };
-
-  // ─── box handlers ───────────────────────────────────────
 
   const handleCreateBox = () => {
     if (!selectedRack) { toast.error('Select a rack first'); return; }
@@ -564,8 +540,6 @@ const Racks = () => {
     setEditingBox(null);
     if (refresh && selectedRack) handleRackSelect(selectedRack);
   };
-
-  // ─── derived state ──────────────────────────────────────
 
   const filteredRacks = useMemo(() => {
     if (!rackSearch) return racks;
@@ -591,17 +565,11 @@ const Racks = () => {
     return getRackColor(idx >= 0 ? idx : 0);
   }, [filteredRacks, selectedRack]);
 
-  // ─── render ─────────────────────────────────────────────
-
   if (loading) return <LoadingState />;
 
   return (
     <div className="racks-page-v2">
-      <TopBar
-        rackCount={racks.length}
-        boxCount={boxes.length}
-        onCreateRack={handleCreateRack}
-      />
+      <TopBar rackCount={racks.length} boxCount={boxes.length} onCreateRack={handleCreateRack} />
 
       <div className={`racks-main-layout ${selectedBox ? 'drawer-open' : ''}`}>
         <RackNavigator
@@ -631,13 +599,10 @@ const Racks = () => {
                       {selectedRack.location && (
                         <span><FiMap size={12} /> {selectedRack.location}</span>
                       )}
-                      <span>
-                        <FiBox size={12} /> {filteredBoxes.length} box{filteredBoxes.length !== 1 ? 'es' : ''}
-                      </span>
+                      <span><FiBox size={12} /> {filteredBoxes.length} box{filteredBoxes.length !== 1 ? 'es' : ''}</span>
                     </div>
                   </div>
                 </div>
-
                 <div className="rack-header-right">
                   <div className="box-search-wrap">
                     <FiSearch size={14} />
@@ -649,18 +614,10 @@ const Racks = () => {
                     />
                   </div>
                   <div className="view-toggle">
-                    <button
-                      className={`toggle-btn ${viewMode === 'shelf' ? 'active' : ''}`}
-                      onClick={() => setViewMode('shelf')}
-                      aria-label="Shelf view"
-                    >
+                    <button className={`toggle-btn ${viewMode === 'shelf' ? 'active' : ''}`} onClick={() => setViewMode('shelf')} aria-label="Shelf view">
                       <FiLayers size={16} />
                     </button>
-                    <button
-                      className={`toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
-                      onClick={() => setViewMode('grid')}
-                      aria-label="Grid view"
-                    >
+                    <button className={`toggle-btn ${viewMode === 'grid' ? 'active' : ''}`} onClick={() => setViewMode('grid')} aria-label="Grid view">
                       <FiGrid size={16} />
                     </button>
                   </div>
@@ -718,11 +675,7 @@ const Racks = () => {
 
       {showRackModal && <RackModal rack={editingRack} onClose={handleRackModalClose} />}
       {showBoxModal && (
-        <BoxModal
-          box={editingBox}
-          rackId={selectedRack?.rackId}
-          onClose={handleBoxModalClose}
-        />
+        <BoxModal box={editingBox} rackId={selectedRack?.rackId} onClose={handleBoxModalClose} />
       )}
     </div>
   );

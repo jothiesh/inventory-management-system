@@ -6,7 +6,7 @@ import {
   FiArrowLeft, FiSend, FiPackage, FiRefreshCw, FiX,
   FiCheckCircle, FiHash, FiInfo, FiAlertTriangle,
   FiClock, FiList, FiPrinter, FiDownload, FiCopy,
-  FiLayers, FiDollarSign, FiCalendar
+  FiLayers, FiDollarSign, FiCalendar, FiEdit2, FiRotateCcw
 } from 'react-icons/fi';
 import './ReturnChallan.css';
 
@@ -40,12 +40,46 @@ const STATUS_META = {
 };
 
 // ════════════════════════════════════════════════════════════════
-// ★ RETURN CHALLAN PRINT DOCUMENT — same style as Delivery Challan
+// ★ Editable — a small inline-editable text node.
+//   When `editable` is true it renders a contentEditable span with a
+//   dashed underline hint; the typed text is captured onBlur. When
+//   false it renders plain text. Printing shows whatever is typed.
 // ════════════════════════════════════════════════════════════════
-const ReturnChallanDoc = ({ dc, preview = false }) => {
+const Editable = ({ value, onChange, editable, className = '', style = {}, tag = 'span', placeholder = '' }) => {
+  const Tag = tag;
+  const ref = useRef(null);
+
+  const handleBlur = () => {
+    if (!editable) return;
+    const text = ref.current?.innerText ?? '';
+    if (text !== value) onChange(text);
+  };
+
+  if (!editable) {
+    return <Tag className={className} style={style}>{value || placeholder}</Tag>;
+  }
+  return (
+    <Tag
+      ref={ref}
+      className={`rdc-editable ${className}`}
+      style={style}
+      contentEditable
+      suppressContentEditableWarning
+      spellCheck={false}
+      onBlur={handleBlur}
+      data-placeholder={placeholder}
+    >
+      {value}
+    </Tag>
+  );
+};
+
+// ════════════════════════════════════════════════════════════════
+// ★ RETURN CHALLAN PRINT DOCUMENT — now fully inline-editable
+// ════════════════════════════════════════════════════════════════
+const ReturnChallanDoc = ({ dc, preview = false, editable = false, doc, setDoc, items, setItems }) => {
   if (!dc) return null;
   const MIN_ROWS = preview ? 6 : 10;
-  const items = dc.items || [];
   const printRows = [...items];
   while (printRows.length < MIN_ROWS) {
     printRows.push({ _pad: true, id: `pad-${printRows.length}` });
@@ -53,37 +87,53 @@ const ReturnChallanDoc = ({ dc, preview = false }) => {
   const totalQty   = items.reduce((s,i) => s + parseFloat(i.qtyReturned||0), 0);
   const totalValue = items.reduce((s,i) => s + (parseFloat(i.qtyReturned||0) * parseFloat(i.unitPrice||0)), 0);
 
+  // helpers to update one doc field or one item cell
+  const setField = (k) => (v) => setDoc(prev => ({ ...prev, [k]: v }));
+  const setItemField = (idx, k) => (v) => setItems(prev => {
+    const next = [...prev];
+    next[idx] = { ...next[idx], [k]: k === 'qtyReturned' || k === 'unitPrice' ? v.replace(/[^\d.]/g, '') : v };
+    return next;
+  });
+
   return (
-    <div className={`challan-doc rdc-doc ${preview ? 'challan-preview' : ''}`}>
-      {/* HEADER — same as Delivery Challan */}
+    <div className={`challan-doc rdc-doc ${preview ? 'challan-preview' : ''} ${editable ? 'rdc-doc-editable' : ''}`}>
+      {/* HEADER */}
       <div className="ch-header">
         <div className="ch-logo-col">
           <div className="ch-brand">Thinture<sup>®</sup></div>
           <div className="ch-tagline">Think Future</div>
         </div>
         <div className="ch-company-col">
-          <div className="ch-company-name">Thinture Technologies Pvt. Ltd.,</div>
-          <div className="ch-company-addr">No. 508, 2nd Floor, 2nd Block, 8th Main, HMT Layout, Vidyaranayapura, Bangalore – 560 097</div>
-          <div className="ch-company-phone">Phone: +91 80 2364 6920 / 4166 6965</div>
+          <Editable tag="div" className="ch-company-name" editable={editable}
+            value={doc.companyName} onChange={setField('companyName')}/>
+          <Editable tag="div" className="ch-company-addr" editable={editable}
+            value={doc.companyAddr} onChange={setField('companyAddr')}/>
+          <Editable tag="div" className="ch-company-phone" editable={editable}
+            value={doc.companyPhone} onChange={setField('companyPhone')}/>
         </div>
       </div>
 
       {/* TITLE ROW */}
       <div className="ch-title-row">
-        <div className="ch-title" style={{ color:'#dc2626' }}>MATERIAL RETURN CHALLAN</div>
-        <div className="ch-gstin">GSTIN: 29AADCT9485G1ZP</div>
+        <Editable tag="div" className="ch-title" style={{ color:'#dc2626' }} editable={editable}
+          value={doc.title} onChange={setField('title')}/>
+        <div className="ch-gstin">
+          GSTIN: <Editable editable={editable} value={doc.gstin} onChange={setField('gstin')}/>
+        </div>
       </div>
 
       {/* META — DC ref + Supplier */}
       <div className="ch-meta">
         <div className="ch-to-box">
           <div className="ch-to-label">To,</div>
-          <div className="ch-to-label">M/s. <strong>{dc.supplierName || '\u00A0'}</strong></div>
+          <div className="ch-to-label">M/s. <Editable editable={editable} style={{ fontWeight:700 }}
+            value={doc.supplierName} onChange={setField('supplierName')}/></div>
           <div className="ch-to-label" style={{ marginTop: 4, fontSize: preview ? 7 : 11 }}>
             Original Batch: <strong style={{ fontFamily:'monospace', color:'#dc2626' }}>{dc.originalBatchRef || '—'}</strong>
           </div>
           <div className="ch-to-label" style={{ fontSize: preview ? 7 : 11 }}>
-            Reason: <strong>{dc.reason?.replace(/_/g,' ') || 'QC Rejection'}</strong>
+            Reason: <Editable editable={editable} style={{ fontWeight:700 }}
+              value={doc.reason} onChange={setField('reason')}/>
           </div>
         </div>
         <div className="ch-ref-box">
@@ -93,7 +143,8 @@ const ReturnChallanDoc = ({ dc, preview = false }) => {
           </div>
           <div className="ch-ref-row" style={{ marginTop: 6 }}>
             <span className="ch-ref-label">Date:</span>
-            <span className="ch-ref-val">{fmtDate(dc.dcDate)}</span>
+            <Editable editable={editable} className="ch-ref-val"
+              value={doc.dcDateText} onChange={setField('dcDateText')}/>
           </div>
           <div className="ch-ref-row" style={{ marginTop: 6 }}>
             <span className="ch-ref-label">Status:</span>
@@ -106,7 +157,7 @@ const ReturnChallanDoc = ({ dc, preview = false }) => {
 
       {/* REASON ROW */}
       <div className="ch-basis-row">
-        Returning the following goods due to <strong>QC Rejection</strong> — please arrange replacement at earliest.
+        <Editable editable={editable} value={doc.introLine} onChange={setField('introLine')}/>
       </div>
 
       {/* ITEMS TABLE */}
@@ -140,19 +191,34 @@ const ReturnChallanDoc = ({ dc, preview = false }) => {
               <tr key={row.id || idx} className="ch-tr">
                 <td className="ch-td ch-td-sl">{idx + 1}</td>
                 <td className="ch-td ch-td-desc">
-                  {row.partNumber && (
-                    <span className="ch-pn">[{row.partNumber}] </span>
+                  {editable ? (
+                    <>
+                      <Editable editable className="ch-pn" style={{ display:'inline' }}
+                        value={row.partNumber || ''} onChange={setItemField(idx,'partNumber')} placeholder="[part]"/>
+                      {' '}
+                      <Editable editable style={{ display:'inline' }}
+                        value={row.description || ''} onChange={setItemField(idx,'description')} placeholder="description"/>
+                    </>
+                  ) : (
+                    <>
+                      {row.partNumber && <span className="ch-pn">[{row.partNumber}] </span>}
+                      {row.description || '—'}
+                    </>
                   )}
-                  {row.description || '—'}
                 </td>
                 <td className="ch-td" style={{ textAlign:'center', fontSize: preview ? 7 : 11 }}>
-                  {row.categoryName || '—'}
+                  <Editable editable={editable} value={row.categoryName || ''}
+                    onChange={setItemField(idx,'categoryName')} placeholder="—"/>
                 </td>
                 <td className="ch-td ch-td-qty" style={{ color:'#dc2626', fontWeight:800 }}>
-                  {parseFloat(row.qtyReturned||0).toFixed(0)}
+                  <Editable editable={editable} value={String(parseFloat(row.qtyReturned||0).toFixed(0))}
+                    onChange={setItemField(idx,'qtyReturned')}/>
                 </td>
                 <td className="ch-td ch-td-rate">
-                  {row.unitPrice ? `₹${fmtNum(row.unitPrice)}` : '—'}
+                  {editable
+                    ? <><span>₹</span><Editable editable style={{ display:'inline' }}
+                        value={String(row.unitPrice || '0')} onChange={setItemField(idx,'unitPrice')}/></>
+                    : (row.unitPrice ? `₹${fmtNum(row.unitPrice)}` : '—')}
                 </td>
                 <td className="ch-td ch-td-rem" style={{ textAlign:'right' }}>
                   {total > 0 ? `₹${fmtNum(total)}` : '—'}
@@ -180,28 +246,32 @@ const ReturnChallanDoc = ({ dc, preview = false }) => {
       </table>
 
       {/* REMARKS */}
-      {dc.remarks && (
+      {(editable || doc.remarks) && (
         <div style={{ padding: preview ? '3px 7px' : '6px 11px', fontSize: preview ? 7 : 11, borderTop:'1px solid #000' }}>
-          <strong>Remarks:</strong> {dc.remarks}
+          <strong>Remarks:</strong>{' '}
+          <Editable editable={editable} value={doc.remarks} onChange={setField('remarks')} placeholder="—"/>
         </div>
       )}
 
-      {/* FOOTER — same as Delivery Challan */}
+      {/* FOOTER */}
       <div className="ch-footer">
         <div style={{ display:'flex', justifyContent:'space-between', marginBottom: preview ? 4 : 8 }}>
           <div style={{ fontSize: preview ? 7 : 10, color:'#555' }}>
             Original Batch Ref: <strong style={{ fontFamily:'monospace' }}>{dc.originalBatchRef || '—'}</strong>
           </div>
-          <div className="ch-footer-right">For Thinture Technologies PVT. LTD.,</div>
+          <Editable tag="div" className="ch-footer-right" editable={editable}
+            value={doc.footerRight} onChange={setField('footerRight')}/>
         </div>
         <div className="ch-sig-row">
           <div className="ch-sig">
             <div className="ch-sig-line"/>
-            <div className="ch-sig-label">(Supplier's Acknowledgement)</div>
+            <Editable tag="div" className="ch-sig-label" editable={editable}
+              value={doc.sigLeft} onChange={setField('sigLeft')}/>
           </div>
           <div className="ch-sig ch-sig-r">
             <div className="ch-sig-line"/>
-            <div className="ch-sig-label">Authorised Signature</div>
+            <Editable tag="div" className="ch-sig-label" editable={editable}
+              value={doc.sigRight} onChange={setField('sigRight')}/>
           </div>
         </div>
       </div>
@@ -210,9 +280,32 @@ const ReturnChallanDoc = ({ dc, preview = false }) => {
 };
 
 // ════════════════════════════════════════════════════════════════
-// PRINT MODAL  (★ smooth: Esc to close, animated in)
+// PRINT MODAL — hosts the editable doc + item state, Edit toggle
 // ════════════════════════════════════════════════════════════════
 const PrintModal = ({ dc, onClose }) => {
+  const [editable, setEditable] = useState(false);
+
+  // Editable header/footer/meta fields — seeded from the DC, then user-editable.
+  const seedDoc = () => ({
+    companyName:  'Thinture Technologies Pvt. Ltd.,',
+    companyAddr:  'No. 508, 2nd Floor, 2nd Block, 8th Main, HMT Layout, Vidyaranayapura, Bangalore – 560 097',
+    companyPhone: 'Phone: +91 80 2364 6920 / 4166 6965',
+    title:        'MATERIAL RETURN CHALLAN',
+    gstin:        '29AADCT9485G1ZP',
+    supplierName: dc.supplierName || '',
+    reason:       dc.reason?.replace(/_/g,' ') || 'QC Rejection',
+    dcDateText:   fmtDate(dc.dcDate),
+    introLine:    'Returning the following goods due to QC Rejection — please arrange replacement at earliest.',
+    remarks:      dc.remarks || '',
+    footerRight:  'For Thinture Technologies PVT. LTD.,',
+    sigLeft:      "(Supplier's Acknowledgement)",
+    sigRight:     'Authorised Signature',
+  });
+
+  const [doc, setDoc]     = useState(seedDoc);
+  const [items, setItems] = useState(() => (dc.items || []).map(i => ({ ...i })));
+
+  const resetAll = () => { setDoc(seedDoc()); setItems((dc.items || []).map(i => ({ ...i }))); toast.info('Reset to original'); };
   const handlePrint = () => window.print();
 
   useEffect(() => {
@@ -223,25 +316,42 @@ const PrintModal = ({ dc, onClose }) => {
 
   return (
     <div className="dc-modal-bg rcd-modal-in" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="dc-modal" style={{ maxWidth: 780 }}>
+      <div className="dc-modal" style={{ maxWidth: 820 }}>
         <div className="dc-modal-head">
           <span>{dc.dcNumber} — Material Return Challan</span>
-          <div style={{ display:'flex', gap:8 }}>
+          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            <button
+              className={`dc-btn ${editable ? 'dc-btn-editing' : 'dc-btn-ghost'}`}
+              onClick={() => setEditable(e => !e)}
+              title="Click any field in the challan to edit it">
+              <FiEdit2 size={13}/> {editable ? 'Editing… (click Done)' : 'Edit Fields'}
+            </button>
+            {editable && (
+              <button className="dc-btn dc-btn-ghost" onClick={resetAll} title="Reset all fields">
+                <FiRotateCcw size={13}/> Reset
+              </button>
+            )}
             <button className="dc-btn dc-btn-primary" onClick={handlePrint}>
               <FiPrinter size={13}/> Print / Save PDF
             </button>
             <button className="dc-modal-close" onClick={onClose} title="Close (Esc)"><FiX size={16}/></button>
           </div>
         </div>
+        {editable && (
+          <div className="rdc-edit-hint">
+            <FiInfo size={12}/> Click any red-dashed field to type. Changes apply to the printed copy only.
+          </div>
+        )}
         <div className="dc-modal-body" id="rdc-print-area">
-          <ReturnChallanDoc dc={dc}/>
+          <ReturnChallanDoc dc={dc} editable={editable}
+            doc={doc} setDoc={setDoc} items={items} setItems={setItems}/>
         </div>
       </div>
     </div>
   );
 };
 
-/* ── Replacement Modal (★ smooth: Esc to close) ── */
+/* ── Replacement Modal ── */
 const ReplacementModal = ({ dc, onClose, onDone }) => {
   const [invoiceNo,  setInvoiceNo]  = useState('');
   const [date,       setDate]       = useState(new Date().toISOString().split('T')[0]);
@@ -313,7 +423,7 @@ const ReplacementModal = ({ dc, onClose, onDone }) => {
   );
 };
 
-/* ── Batch Timeline (★ smooth: staggered slide-in) ── */
+/* ── Batch Timeline ── */
 const BatchTimeline = ({ batchId }) => {
   const [events,  setEvents]  = useState([]);
   const [loading, setLoading] = useState(true);
@@ -384,7 +494,7 @@ const BatchTimeline = ({ batchId }) => {
 };
 
 /* ══════════════════════════════════════
-   MAIN PAGE  (★ IMPROVED — smooth + advanced)
+   MAIN PAGE
    ══════════════════════════════════════ */
 const ReturnChallanDetail = () => {
   const navigate = useNavigate();
@@ -425,7 +535,6 @@ const ReturnChallanDetail = () => {
     } finally { setSending(false); }
   };
 
-  // ★ copy DC number to clipboard
   const copyDcNo = () => {
     try {
       navigator.clipboard.writeText(dc.dcNumber);
@@ -453,7 +562,6 @@ const ReturnChallanDetail = () => {
   const statusMeta  = STATUS_META[dc.status] || STATUS_META.DRAFT;
   const currentStep = STATUS_FLOW.indexOf(dc.status);
 
-  // ★ stats strip values
   const items      = dc.items || [];
   const totalValue = items.reduce((s,i) => s + (parseFloat(i.qtyReturned||0) * parseFloat(i.unitPrice||0)), 0);
   const dcAge      = daysSince(dc.dcDate);
@@ -485,13 +593,10 @@ const ReturnChallanDetail = () => {
 
         {/* ACTION BUTTONS */}
         <div className="rc-detail-actions">
-
-          {/* ★ Refresh */}
           <button className="rcd-refresh-btn" onClick={() => load(true)} disabled={refreshing} title="Refresh">
             <FiRefreshCw size={14} className={refreshing ? 'rc-spin' : ''}/>
           </button>
 
-          {/* ★ PRINT BUTTON — always visible */}
           <button
             className="rc-action-btn rcd-print-btn"
             onClick={() => setShowPrint(true)}>
@@ -519,7 +624,7 @@ const ReturnChallanDetail = () => {
         </div>
       </div>
 
-      {/* ★ NEW — STATS STRIP */}
+      {/* STATS STRIP */}
       <div className="rcd-stats rcd-fade" style={{ animationDelay: '60ms' }}>
         <div className="rcd-stat">
           <div className="rcd-stat-icon" style={{ background:'#eef2ff', color:'#4f46e5' }}><FiLayers size={15}/></div>
@@ -609,7 +714,7 @@ const ReturnChallanDetail = () => {
             </div>
           </div>
 
-          {/* ★ LIVE CHALLAN PREVIEW — click to open print modal */}
+          {/* LIVE CHALLAN PREVIEW */}
           <div className="rc-card rcd-fade rcd-card-hover" style={{ animationDelay: '240ms' }}>
             <div className="rc-card-title">
               <FiList size={13}/> Challan Preview
@@ -617,10 +722,27 @@ const ReturnChallanDetail = () => {
                 <FiPrinter size={11}/> Print / PDF
               </button>
             </div>
-            {/* Preview — scaled down, smooth hover hint */}
             <div className="rdc-preview-wrap" onClick={() => setShowPrint(true)} title="Click to open full print view">
-              <div className="rdc-preview-hint"><FiPrinter size={12}/> Click to print</div>
-              <ReturnChallanDoc dc={dc} preview/>
+              <div className="rdc-preview-hint"><FiPrinter size={12}/> Click to print / edit</div>
+              <ReturnChallanDoc dc={dc} preview
+                doc={{
+                  companyName:  'Thinture Technologies Pvt. Ltd.,',
+                  companyAddr:  'No. 508, 2nd Floor, 2nd Block, 8th Main, HMT Layout, Vidyaranayapura, Bangalore – 560 097',
+                  companyPhone: 'Phone: +91 80 2364 6920 / 4166 6965',
+                  title:        'MATERIAL RETURN CHALLAN',
+                  gstin:        '29AADCT9485G1ZP',
+                  supplierName: dc.supplierName || '',
+                  reason:       dc.reason?.replace(/_/g,' ') || 'QC Rejection',
+                  dcDateText:   fmtDate(dc.dcDate),
+                  introLine:    'Returning the following goods due to QC Rejection — please arrange replacement at earliest.',
+                  remarks:      dc.remarks || '',
+                  footerRight:  'For Thinture Technologies PVT. LTD.,',
+                  sigLeft:      "(Supplier's Acknowledgement)",
+                  sigRight:     'Authorised Signature',
+                }}
+                setDoc={() => {}}
+                items={(dc.items || [])}
+                setItems={() => {}}/>
             </div>
           </div>
 
@@ -693,7 +815,7 @@ const ReturnChallanDetail = () => {
         </div>
       </div>
 
-      {/* ★ PRINT MODAL */}
+      {/* PRINT MODAL */}
       {showPrint && <PrintModal dc={dc} onClose={() => setShowPrint(false)}/>}
 
       {/* REPLACEMENT MODAL */}

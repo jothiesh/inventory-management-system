@@ -1,11 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Fragment } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import {
   FiCheckCircle, FiSearch, FiX, FiRefreshCw, FiDownload,
-  FiPackage, FiUser, FiCalendar, FiHash,
-  FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight
+  FiPackage, FiUser, FiCalendar, FiHash, FiArrowUp, FiArrowDown,
+  FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight,
+  FiFileText
 } from 'react-icons/fi';
+import QcChecklistModal from './QcChecklistModal';
+import QcBatchLots from './QcBatchLots';
+import './QcBatchLots.css';
 import './QcApproved.css';
 
 const fmtDate = (iso) => {
@@ -17,12 +21,24 @@ const fmtDate = (iso) => {
   } catch { return '—'; }
 };
 
+const SORT_OPTIONS = [
+  { key: 'invoiceNo',    label: 'Invoice No' },
+  { key: 'supplierName', label: 'Supplier'   },
+  { key: 'inspectedAt',  label: 'Date'       },
+  { key: 'categoryName', label: 'Category'   },
+];
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
 const QcApproved = () => {
   const [inspections, setInspections] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const PS = 15;
+  const [loading, setLoading]   = useState(true);
+  const [search, setSearch]     = useState('');
+  const [page, setPage]         = useState(1);
+  const [pageSize, setPageSize] = useState(15);
+  const [sortBy, setSortBy]     = useState('inspectedAt');
+  const [sortDir, setSortDir]   = useState('desc');
+  const [checklistFor, setChecklistFor] = useState(null);   // ★ template-select + download
+  const [expandedId,   setExpandedId]   = useState(null);   // ★ click a row -> full Stock IN data
 
   const load = async () => {
     try {
@@ -54,19 +70,36 @@ const QcApproved = () => {
   }, [inspections]);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return inspections;
-    const q = search.toLowerCase();
-    return inspections.filter(i =>
-      [i.batchRef, i.supplierName, i.invoiceNo, i.inspectorName, i.categoryName, i.overallRemarks]
-        .filter(Boolean)
-        .some(f => f.toLowerCase().includes(q))
-    );
-  }, [inspections, search]);
+    let list = inspections;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(i =>
+        [i.invoiceNo, i.supplierName, i.inspectorName, i.categoryName, i.overallRemarks]
+          .filter(Boolean)
+          .some(f => f.toLowerCase().includes(q))
+      );
+    }
+    return [...list].sort((a, b) => {
+      let va, vb;
+      switch (sortBy) {
+        case 'invoiceNo':    va = a.invoiceNo || '';    vb = b.invoiceNo || '';    break;
+        case 'supplierName': va = a.supplierName || ''; vb = b.supplierName || ''; break;
+        case 'categoryName': va = a.categoryName || ''; vb = b.categoryName || ''; break;
+        case 'inspectedAt':
+          va = a.inspectedAt ? new Date(a.inspectedAt).getTime() : 0;
+          vb = b.inspectedAt ? new Date(b.inspectedAt).getTime() : 0; break;
+        default: return 0;
+      }
+      if (va < vb) return sortDir === 'asc' ? -1 : 1;
+      if (va > vb) return sortDir === 'asc' ?  1 : -1;
+      return 0;
+    });
+  }, [inspections, search, sortBy, sortDir]);
 
-  const tp = Math.max(1, Math.ceil(filtered.length / PS));
+  const tp = Math.max(1, Math.ceil(filtered.length / pageSize));
   const sp = Math.min(page, tp);
-  const paged = filtered.slice((sp - 1) * PS, sp * PS);
-  useEffect(() => { setPage(1); }, [search]);
+  const paged = filtered.slice((sp - 1) * pageSize, sp * pageSize);
+  useEffect(() => { setPage(1); }, [search, sortBy, sortDir, pageSize]);
 
   const goTo = (p) => setPage(Math.max(1, Math.min(p, tp)));
   const pageNums = () => {
@@ -87,7 +120,7 @@ const QcApproved = () => {
       const url = URL.createObjectURL(r.data);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `QC-APPROVED-${insp.batchRef || 'ID-' + insp.id}.pdf`;
+      a.download = `QC-APPROVED-${insp.invoiceNo || 'ID-' + insp.id}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -151,13 +184,32 @@ const QcApproved = () => {
           className="qca-search-input"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search by batch, supplier, invoice, inspector, category..."
+          placeholder="Search by invoice, supplier, inspector, category..."
         />
         {search && (
           <button className="qca-search-clear" onClick={() => setSearch('')}>
             <FiX size={13} />
           </button>
         )}
+      </div>
+
+      {/* ── Sort + Show toolbar ── */}
+      <div className="qca-toolbar">
+        <div className="qca-toolbar-group">
+          <span className="qca-toolbar-label">Show</span>
+          <select className="qca-toolbar-select" value={pageSize} onChange={e => setPageSize(Number(e.target.value))}>
+            {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        <div className="qca-toolbar-group">
+          <span className="qca-toolbar-label">Sort</span>
+          <select className="qca-toolbar-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+            {SORT_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+          </select>
+          <button className="qca-sort-dir" onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')} title="Toggle direction">
+            {sortDir === 'asc' ? <FiArrowUp size={14} /> : <FiArrowDown size={14} />}
+          </button>
+        </div>
       </div>
 
       <div className="qca-card">
@@ -178,28 +230,36 @@ const QcApproved = () => {
             <table className="qca-table">
               <thead>
                 <tr>
+                  <th style={{ width: 26 }}></th>
                   <th style={{ width: 40 }}>#</th>
-                  <th>BATCH REF</th>
+                  <th>INVOICE</th>
                   <th>CATEGORY</th>
                   <th>SUPPLIER</th>
-                  <th>INVOICE</th>
                   <th>INSPECTOR</th>
                   <th>ITEMS</th>
                   <th>RECEIVED</th>
                   <th>ACCEPTED</th>
                   <th>INSPECTED</th>
                   <th>REMARKS</th>
-                  <th style={{ width: 80 }}>ACTION</th>
+                  <th style={{ width: 150 }}>ACTION</th>
                 </tr>
               </thead>
               <tbody>
                 {paged.map((i, idx) => (
-                  <tr key={i.id} className="qca-row">
-                    <td className="qca-num">{(sp - 1) * PS + idx + 1}</td>
+                  <Fragment key={i.id}>
+                  <tr
+                    className={`qca-row qbl-clickable ${expandedId === i.id ? 'qbl-open' : ''}`}
+                    onClick={() => setExpandedId(prev => prev === i.id ? null : i.id)}
+                  >
+                    <td className="qbl-expand-cell">
+                      <FiChevronRight size={13}
+                        className={`qbl-chev ${expandedId === i.id ? 'qbl-chev-open' : ''}`} />
+                    </td>
+                    <td className="qca-num">{(sp - 1) * pageSize + idx + 1}</td>
                     <td>
                       <span className="qca-batch-ref">
                         <FiHash size={9} />
-                        {i.batchRef || `SIB-${String(i.id).padStart(5, '0')}`}
+                        {i.invoiceNo || '—'}
                       </span>
                     </td>
                     <td>
@@ -208,7 +268,6 @@ const QcApproved = () => {
                         : <span className="qca-faded">—</span>}
                     </td>
                     <td className="qca-strong">{i.supplierName || '—'}</td>
-                    <td className="qca-faded">{i.invoiceNo || '—'}</td>
                     <td>
                       {i.inspectorName ? (
                         <span className="qca-inspector">
@@ -225,16 +284,32 @@ const QcApproved = () => {
                     <td className="qca-faded qca-truncate" title={i.overallRemarks}>
                       {i.overallRemarks || '—'}
                     </td>
-                    <td>
-                      {i.pdfPath ? (
-                        <button className="qca-pdf-btn" onClick={() => downloadPdf(i)} title="Download PDF">
-                          <FiDownload size={13} />
+                    <td onClick={e => e.stopPropagation()}>
+                      <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+                        {/* ★ select template → live checklist → download */}
+                        <button className="qcm-open-btn"
+                          onClick={() => setChecklistFor(i)}
+                          title="Select template and download checklist">
+                          <FiFileText size={11} /> Checklist
                         </button>
-                      ) : (
-                        <span className="qca-faded" style={{ fontSize: 11 }}>No PDF</span>
-                      )}
+                        {i.pdfPath && (
+                          <button className="qca-pdf-btn" onClick={() => downloadPdf(i)} title="Download stored PDF">
+                            <FiDownload size={13} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
+
+                  {/* ★ full Stock IN data — lot no, rack/box, HSN, rate, GST */}
+                  {expandedId === i.id && (
+                    <tr className="qbl-detail-row">
+                      <td colSpan={12}>
+                        <QcBatchLots batchId={i.batchId} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -244,7 +319,7 @@ const QcApproved = () => {
         {filtered.length > 0 && (
           <div className="qca-pagination">
             <span className="qca-pg-info">
-              {(sp - 1) * PS + 1}–{Math.min(sp * PS, filtered.length)} of {filtered.length}
+              {(sp - 1) * pageSize + 1}–{Math.min(sp * pageSize, filtered.length)} of {filtered.length}
             </span>
             <div className="qca-pg-controls">
               <button className="qca-pg-btn" onClick={() => goTo(1)} disabled={sp === 1}>
@@ -270,6 +345,14 @@ const QcApproved = () => {
           </div>
         )}
       </div>
+
+      {/* ★ same flow as the QC Inspection screen — pick template, fill, download */}
+      {checklistFor && (
+        <QcChecklistModal
+          inspection={checklistFor}
+          onClose={() => setChecklistFor(null)}
+        />
+      )}
     </div>
   );
 };

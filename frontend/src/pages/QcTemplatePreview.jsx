@@ -19,9 +19,6 @@ const QcTemplatePreview = ({ template, onClose }) => {
 
   const stages = (template.stages || []).filter(s => s.checkPoint && s.checkPoint.trim());
 
-  // ── Group stages by stageOperation for display ──────────────
-  let lastOp = null;
-
   // ── Print handler ────────────────────────────────────────────
   const handlePrint = () => {
     const content  = printRef.current.innerHTML;
@@ -184,7 +181,7 @@ const ExcelView = ({ template, stages }) => {
                 <td className="qtp-xl-td-sl">{s.slNo}</td>
                 <td className="qtp-xl-td-op">{s.stageOperation || ''}</td>
                 <td className="qtp-xl-td-cp">{s.checkPoint}</td>
-                <td className="qtp-xl-td-aql">{s.aqlLabel || 'As per AQL'}</td>
+                <td className="qtp-xl-td-aql" />
                 <td className="qtp-xl-td-rem" />
                 <td className="qtp-xl-td-pf">
                   <span className="qtp-xl-checkbox">☐</span> Pass &nbsp;
@@ -292,7 +289,7 @@ const PdfView = ({ template, stages }) => {
                 <td className="center">{s.slNo}</td>
                 <td>{s.stageOperation || ''}</td>
                 <td>{s.checkPoint}</td>
-                <td className="center">{s.aqlLabel || 'As per AQL'}</td>
+                <td className="center" />
                 <td />
                 <td className="center">
                   <span className="qtp-pdf-checkbox">☐</span> Pass &nbsp;

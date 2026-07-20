@@ -54,4 +54,6 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, Lo
     
     List<StockMovement> findByTransactionGroupIdOrderByCreatedAtAsc(String transactionGroupId);
     
+    List<StockMovement> findByLotSupplierSupplierIdOrderByCreatedAtDesc(Long supplierId);
+    
 }

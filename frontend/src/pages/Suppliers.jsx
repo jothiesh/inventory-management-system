@@ -6,6 +6,7 @@ import {
   FiPlus, FiEdit2, FiTrash2, FiSearch, FiX,
   FiLoader, FiChevronRight
 } from 'react-icons/fi';
+import Pagination from './Pagination';
 import './Suppliers.css';
 
 const EMPTY_FORM = {
@@ -18,12 +19,15 @@ const EMPTY_FORM = {
   gstnNumber: '',
 };
 
+const PAGE_SIZE = 15;
+
 const Suppliers = () => {
   const navigate = useNavigate();
 
   const [suppliers, setSuppliers] = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [search,    setSearch]    = useState('');
+  const [page,      setPage]      = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [editMode,  setEditMode]  = useState(false);
   const [editId,    setEditId]    = useState(null);
@@ -32,6 +36,7 @@ const Suppliers = () => {
   const [deleting,  setDeleting]  = useState(null);
 
   useEffect(() => { loadSuppliers(); }, []);
+  useEffect(() => { setPage(1); }, [search]);   // reset to page 1 on new search
 
   const loadSuppliers = async () => {
     try {
@@ -81,7 +86,7 @@ const Suppliers = () => {
 
   const handleSubmit = async () => {
     if (!form.supplierName.trim()) { toast.warn('Supplier Name is required'); return; }
-    
+
     // Sanitize optional fields to clear blank strings to standard null elements
     const payload = {
       ...form,
@@ -133,6 +138,12 @@ const Suppliers = () => {
       .filter(Boolean).some(f => f.toLowerCase().includes(q));
   });
 
+  // ── Pagination ──
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage   = Math.min(page, totalPages);
+  const paged      = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const rowOffset  = (safePage - 1) * PAGE_SIZE;
+
   return (
     <div className="sp-page">
       {/* Header */}
@@ -183,15 +194,15 @@ const Suppliers = () => {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {paged.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="sp-empty">
                     {search ? `No results for "${search}"` : 'No suppliers found'}
                   </td>
                 </tr>
-              ) : filtered.map((s, idx) => (
+              ) : paged.map((s, idx) => (
                 <tr key={s.supplierId}>
-                  <td className="sp-num">{idx + 1}</td>
+                  <td className="sp-num">{rowOffset + idx + 1}</td>
                   <td>
                     {s.supplierCode
                       ? <span className="sp-code-badge">{s.supplierCode}</span>
@@ -233,6 +244,9 @@ const Suppliers = () => {
               ))}
             </tbody>
           </table>
+
+          {/* ★ Pagination */}
+          <Pagination page={safePage} pageSize={PAGE_SIZE} total={filtered.length} onChange={setPage} />
         </div>
       )}
 
@@ -290,7 +304,7 @@ const Suppliers = () => {
               <div className="sp-form-group sp-full">
                 <label>Address</label>
                 <textarea name="address" placeholder="Full address" rows={3}
-                  value={form.address} onChange={handleChange} />
+                  value={form.address} onChange={handleChange} />br
               </div>
             </div>
 

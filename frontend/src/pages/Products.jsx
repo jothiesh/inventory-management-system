@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { productApi } from '../api/productApi';
 import { categoryApi } from '../api/categoryApi';
@@ -11,7 +11,7 @@ import {
   FiBox, FiLayers, FiMapPin, FiX,
   FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight,
   FiShoppingCart, FiRotateCw, FiSave, FiAlertTriangle,
-  FiInfo, FiDollarSign, FiTag, FiHash
+  FiInfo, FiDollarSign, FiTag, FiHash, FiChevronDown
 } from 'react-icons/fi';
 import './Products.css';
 
@@ -31,6 +31,20 @@ const loadDraft = () => {
 };
 const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch {} };
 
+// Suggests the next box number for a rack, based on the trailing number
+// in existing box numbers for that rack (e.g. boxes "1","2" -> "3").
+// Falls back to "1" if nothing numeric is found.
+const getNextBoxNumber = (existingBoxes) => {
+  const nums = (existingBoxes || [])
+    .map(b => {
+      const m = String(b.boxNumber ?? '').match(/(\d+)\s*$/);
+      return m ? parseInt(m[1], 10) : null;
+    })
+    .filter(n => n !== null && !Number.isNaN(n));
+  const max = nums.length > 0 ? Math.max(...nums) : 0;
+  return String(max + 1);
+};
+
 const timeAgo = (iso) => {
   if (!iso) return '';
   const diff = Date.now() - new Date(iso).getTime();
@@ -42,7 +56,7 @@ const timeAgo = (iso) => {
 
 const EMPTY_FORM = {
   productId: null, partNumber: '', description: '',
-  packageType: '', manufacturerPn: '', unitPrice: '',
+  packageType: '', manufacturerPn: '', make: '', unitPrice: '',
   hsnCode: '', gstPercent: '',
   unitOfMeasure: 'PCS',
   minStockLevel: 10, categoryId: '', supplierId: '',
@@ -53,10 +67,90 @@ const GST_OPTIONS = ['0', '5', '12', '18'];
 
 const UNIT_OPTIONS = [
   { value: 'PCS',   label: 'Pieces', icon: '📦', short: 'pcs' },
+  { value: 'NOS',   label: 'Nos',    icon: '🔢', short: 'nos' },
   { value: 'METER', label: 'Meter',  icon: '📏', short: 'm'   },
   { value: 'LITER', label: 'Liter',  icon: '🧴', short: 'L'   },
   { value: 'KG',    label: 'Kg',     icon: '⚖',  short: 'kg'  },
 ];
+
+// ── Searchable dropdown ──────────────────────────────────────
+// A type-to-filter combobox used in place of a plain <select> for the
+// Rack and Box pickers. Click to open, type to filter, click/Enter to pick.
+const SearchableSelect = ({ options, value, onChange, placeholder, disabled, emptyText = 'No matches' }) => {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [highlightIdx, setHighlightIdx] = useState(0);
+  const wrapRef = useRef(null);
+
+  const selected = options.find(o => String(o.value) === String(value));
+
+  useEffect(() => { if (!open) setQuery(''); }, [open]);
+  useEffect(() => { setHighlightIdx(0); }, [query, open]);
+
+  useEffect(() => {
+    const onDocMouseDown = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter(o => o.label.toLowerCase().includes(q));
+  }, [options, query]);
+
+  const pick = (opt) => { onChange(opt.value); setOpen(false); setQuery(''); };
+
+  const onKeyDown = (e) => {
+    if (!open && (e.key === 'ArrowDown' || e.key === 'Enter')) { e.preventDefault(); setOpen(true); return; }
+    if (!open) return;
+    if (e.key === 'ArrowDown')      { e.preventDefault(); setHighlightIdx(i => Math.min(i + 1, filtered.length - 1)); }
+    else if (e.key === 'ArrowUp')   { e.preventDefault(); setHighlightIdx(i => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter')     { e.preventDefault(); if (filtered[highlightIdx]) pick(filtered[highlightIdx]); }
+    else if (e.key === 'Escape')    { setOpen(false); }
+  };
+
+  return (
+    <div className={`ss-wrap ${disabled ? 'ss-disabled' : ''}`} ref={wrapRef}>
+      <div className="ss-control" onClick={() => !disabled && setOpen(o => !o)}>
+        {open ? (
+          <input
+            className="ss-input"
+            autoFocus
+            value={query}
+            placeholder={selected ? selected.label : (placeholder || 'Search...')}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+            disabled={disabled}
+          />
+        ) : (
+          <span className={`ss-value ${!selected ? 'ss-placeholder' : ''}`}>
+            {selected ? selected.label : (placeholder || 'Select...')}
+          </span>
+        )}
+        <FiChevronDown size={14} className={`ss-caret ${open ? 'ss-caret-open' : ''}`} />
+      </div>
+      {open && (
+        <div className="ss-menu">
+          {filtered.length === 0 ? (
+            <div className="ss-empty">{emptyText}</div>
+          ) : filtered.map((opt, i) => (
+            <div
+              key={opt.value}
+              className={`ss-option ${i === highlightIdx ? 'ss-option-active' : ''} ${String(opt.value) === String(value) ? 'ss-option-selected' : ''}`}
+              onMouseEnter={() => setHighlightIdx(i)}
+              onClick={() => pick(opt)}
+            >
+              {opt.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const Products = () => {
   const navigate = useNavigate();
@@ -80,7 +174,7 @@ const Products = () => {
   const [showModalNewRack,  setShowModalNewRack]  = useState(false);
   const [showModalNewBox,   setShowModalNewBox]   = useState(false);
   const [showModalRackView, setShowModalRackView] = useState(false);
-  const [modalNewRack, setModalNewRack] = useState({ rackNumber: '', rackName: '', location: '' });
+  const [modalNewRack, setModalNewRack] = useState({ rackNumber: '', rackName: '', location: '', boxNumber: '' });
   const [modalNewBox,  setModalNewBox]  = useState({ boxNumber: '', boxLabel: '' });
   const [savingRack, setSavingRack]     = useState(false);
   const [savingBox,  setSavingBox]      = useState(false);
@@ -88,6 +182,45 @@ const Products = () => {
   const [viewerBoxes, setViewerBoxes]   = useState([]);
 
   const [formData, setFormData] = useState(EMPTY_FORM);
+
+  // ── Overlay click-through-drag guard ─────────────────────────
+  // Prevents the modal from closing when a user clicks/drags inside an
+  // input, textarea, or pill and the mouseup ends up resolving on the
+  // overlay (e.g. text selection that drifts past the modal edge).
+  // We only close if BOTH mousedown and click originated on the overlay
+  // itself, not on any child element.
+  const overlayMouseDownTarget = useRef(null);
+
+  const handleOverlayMouseDown = (e) => {
+    overlayMouseDownTarget.current = e.target;
+  };
+
+  const handleOverlayClick = (e, closeFn) => {
+    if (e.target === e.currentTarget && overlayMouseDownTarget.current === e.currentTarget) {
+      closeFn();
+    }
+    overlayMouseDownTarget.current = null;
+  };
+
+  // ── Rack / Box searchable-select options + handlers ───────────
+  const rackOptions = useMemo(
+    () => racks.map(r => ({ value: r.rackId, label: `${r.rackNumber} - ${r.rackName}` })),
+    [racks]
+  );
+  const boxOptions = useMemo(
+    () => boxes.map(b => ({ value: b.boxId, label: `${b.boxNumber} - ${b.boxLabel}` })),
+    [boxes]
+  );
+
+  const handleRackSelect = (rackId) => {
+    setFormData(prev => ({ ...prev, rackId: String(rackId), boxId: '' }));
+    loadBoxesByRack(rackId);
+    setShowModalNewBox(false);
+  };
+
+  const handleBoxSelect = (boxId) => {
+    setFormData(prev => ({ ...prev, boxId: String(boxId) }));
+  };
 
   useEffect(() => { loadData(); checkDraft(); }, []);
   useEffect(() => { setCurrentPage(1); }, [searchTerm, filterCategory]);
@@ -126,7 +259,7 @@ const Products = () => {
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
       result = result.filter(p =>
-        [p.partNumber, p.description, p.packageType, p.manufacturerPn, p.category?.categoryName]
+        [p.partNumber, p.description, p.packageType, p.manufacturerPn, p.make, p.category?.categoryName]
           .filter(Boolean).some(f => f.toLowerCase().includes(q))
       );
     }
@@ -152,15 +285,40 @@ const Products = () => {
     if (!modalNewRack.rackNumber || !modalNewRack.rackName) { toast.error('Fill rack number and name'); return; }
     try {
       setSavingRack(true);
-      await rackApi.create(modalNewRack);
+      await rackApi.create({
+        rackNumber: modalNewRack.rackNumber,
+        rackName:   modalNewRack.rackName,
+        location:   modalNewRack.location
+      });
       toast.success(`Rack "${modalNewRack.rackName}" created!`);
       const res = await rackApi.getActive();
       const rackData = res.data.data || [];
       setRacks(rackData);
       const created = rackData[rackData.length - 1];
-      setFormData(prev => ({ ...prev, rackId: created.rackId, boxId: '' }));
-      setBoxes([]);
-      setModalNewRack({ rackNumber: '', rackName: '', location: '' });
+
+      // Box number doubles as the label automatically, so the user only
+      // has to type it once here to get the rack's first box set up too.
+      let createdBoxId = '';
+      const boxNum = modalNewRack.boxNumber?.trim();
+      if (boxNum) {
+        try {
+          await boxApi.create({ boxNumber: boxNum, boxLabel: boxNum, rackId: created.rackId });
+          toast.success(`Box "${boxNum}" created!`);
+          const boxRes = await boxApi.getByRack(created.rackId);
+          const boxData = boxRes.data.data || boxRes.data || [];
+          setBoxes(boxData);
+          const createdBox = boxData[boxData.length - 1];
+          createdBoxId = createdBox?.boxId ? String(createdBox.boxId) : '';
+        } catch {
+          toast.error('Rack created, but the box could not be created');
+          setBoxes([]);
+        }
+      } else {
+        setBoxes([]);
+      }
+
+      setFormData(prev => ({ ...prev, rackId: String(created.rackId), boxId: createdBoxId }));
+      setModalNewRack({ rackNumber: '', rackName: '', location: '', boxNumber: '' });
       setShowModalNewRack(false);
     } catch { toast.error('Failed to create rack'); }
     finally { setSavingRack(false); }
@@ -169,11 +327,13 @@ const Products = () => {
   const handleModalSaveBox = async (e) => {
     e.preventDefault();
     if (!formData.rackId) { toast.error('Select a rack first'); return; }
-    if (!modalNewBox.boxNumber || !modalNewBox.boxLabel) { toast.error('Fill box number and label'); return; }
+    const boxNum = modalNewBox.boxNumber?.trim();
+    if (!boxNum) { toast.error('Enter a box number'); return; }
     try {
       setSavingBox(true);
-      await boxApi.create({ ...modalNewBox, rackId: formData.rackId });
-      toast.success(`Box "${modalNewBox.boxLabel}" created!`);
+      // Label is always set to match the box number automatically.
+      await boxApi.create({ boxNumber: boxNum, boxLabel: boxNum, rackId: formData.rackId });
+      toast.success(`Box "${boxNum}" created!`);
       await loadBoxesByRack(formData.rackId);
       setModalNewBox({ boxNumber: '', boxLabel: '' });
       setShowModalNewBox(false);
@@ -200,11 +360,6 @@ const Products = () => {
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
-    if (name === 'rackId') {
-      loadBoxesByRack(value);
-      setFormData(prev => ({ ...prev, boxId: '' }));
-      setShowModalNewBox(false);
-    }
   };
 
   const handleSubmit = async (e) => {
@@ -217,6 +372,7 @@ const Products = () => {
         packageType:    formData.packageType?.trim()    || null,
         unitOfMeasure:  formData.unitOfMeasure          || 'PCS',
         manufacturerPn: formData.manufacturerPn?.trim() || null,
+        make:           formData.make?.trim()           || null,
         unitPrice:      formData.unitPrice ? parseFloat(formData.unitPrice) : 0,
         hsnCode:        formData.hsnCode?.trim()        || null,
         gstPercent:     formData.gstPercent ? parseFloat(formData.gstPercent) : null,
@@ -252,6 +408,7 @@ const Products = () => {
       packageType:    product.packageType    || '',
       unitOfMeasure:  product.unitOfMeasure  || 'PCS',
       manufacturerPn: product.manufacturerPn || '',
+      make:           product.make           || '',
       unitPrice:      product.unitPrice      || '',
       hsnCode:        product.hsnCode        || '',
       gstPercent:     product.gstPercent     || '',
@@ -264,6 +421,9 @@ const Products = () => {
       isActive:       product.isActive !== false
     });
     if (product.rack?.rackId) loadBoxesByRack(product.rack.rackId);
+    setShowModalNewRack(false);
+    setShowModalNewBox(false);
+    setShowModalRackView(false);
     setShowModal(true);
   };
 
@@ -282,6 +442,8 @@ const Products = () => {
     setShowModalNewRack(false);
     setShowModalNewBox(false);
     setShowModalRackView(false);
+    setModalNewRack({ rackNumber: '', rackName: '', location: '', boxNumber: '' });
+    setModalNewBox({ boxNumber: '', boxLabel: '' });
   };
 
   const handleRestoreDraft = () => {
@@ -399,7 +561,8 @@ const Products = () => {
                     <span className="prod-unit-badge" style={{ marginLeft: 4 }}>
                       {product.unitOfMeasure === 'METER' ? '📏 m' :
                        product.unitOfMeasure === 'LITER' ? '🧴 L' :
-                       product.unitOfMeasure === 'KG'    ? '⚖ kg' : product.unitOfMeasure}
+                       product.unitOfMeasure === 'KG'    ? '⚖ kg' :
+                       product.unitOfMeasure === 'NOS'   ? '🔢 nos' : product.unitOfMeasure}
                     </span>
                   )}
                 </td>
@@ -458,7 +621,11 @@ const Products = () => {
 
       {/* ── MODAL ── */}
       {showModal && (
-        <div className="modal-overlay" onClick={handleCloseModal}>
+        <div
+          className="modal-overlay"
+          onMouseDown={handleOverlayMouseDown}
+          onClick={e => handleOverlayClick(e, handleCloseModal)}
+        >
           <div className="modal-content modal-wide" onClick={e => e.stopPropagation()}>
 
             <div className="prod-modal-head">
@@ -517,6 +684,11 @@ const Products = () => {
                 </div>
 
                 <div className="form-group">
+                  <label>Make</label>
+                  <input type="text" name="make" value={formData.make} onChange={handleInputChange} placeholder="e.g. Espressif, Texas Instruments" />
+                </div>
+
+                <div className="form-group">
                   <label>Unit Price (₹)</label>
                   <input type="number" name="unitPrice" value={formData.unitPrice}
                     onChange={handleInputChange} placeholder="0.00" step="0.01" min="0" />
@@ -568,12 +740,21 @@ const Products = () => {
                 <div className="form-group">
                   <label><FiMapPin size={12} style={{ marginRight: 4, color: '#667eea' }}/> Rack</label>
                   <div className="si-rack-row">
-                    <select name="rackId" value={formData.rackId} onChange={handleInputChange} className="si-rack-select">
-                      <option value="">Select Rack</option>
-                      {racks.map(r => <option key={r.rackId} value={r.rackId}>{r.rackNumber} - {r.rackName}</option>)}
-                    </select>
+                    <div className="si-rack-select">
+                      <SearchableSelect
+                        options={rackOptions}
+                        value={formData.rackId}
+                        onChange={handleRackSelect}
+                        placeholder="Select Rack"
+                      />
+                    </div>
                     <button type="button" className="si-icon-btn si-icon-btn-primary"
-                      onClick={() => { setShowModalNewRack(!showModalNewRack); setShowModalRackView(false); }}>
+                      onClick={() => {
+                        const next = !showModalNewRack;
+                        if (next) setModalNewRack(p => ({ ...p, boxNumber: p.boxNumber || '1' }));
+                        setShowModalNewRack(next);
+                        setShowModalRackView(false);
+                      }}>
                       <FiPlus size={15} />
                     </button>
                     <button type="button" className="si-icon-btn si-icon-btn-secondary"
@@ -589,7 +770,11 @@ const Products = () => {
                         <input placeholder="Rack No." value={modalNewRack.rackNumber} onChange={e => setModalNewRack(p => ({ ...p, rackNumber: e.target.value }))} />
                         <input placeholder="Rack Name" value={modalNewRack.rackName} onChange={e => setModalNewRack(p => ({ ...p, rackName: e.target.value }))} />
                         <input placeholder="Location" value={modalNewRack.location} onChange={e => setModalNewRack(p => ({ ...p, location: e.target.value }))} />
+                        <input placeholder="Box No. (optional)" value={modalNewRack.boxNumber} onChange={e => setModalNewRack(p => ({ ...p, boxNumber: e.target.value }))} />
                       </div>
+                      <p className="inline-form-hint">
+                        Give a box number and a first box is created in this rack automatically (label set to the same number — no need to type it twice).
+                      </p>
                       <div className="inline-form-actions">
                         <button type="button" className="btn-inline-save" onClick={handleModalSaveRack} disabled={savingRack}>{savingRack ? 'Saving...' : 'Save Rack'}</button>
                         <button type="button" className="btn-inline-cancel" onClick={() => setShowModalNewRack(false)}>Cancel</button>
@@ -642,12 +827,25 @@ const Products = () => {
                 <div className="form-group">
                   <label><FiBox size={12} style={{ marginRight: 4, color: '#667eea' }}/> Box</label>
                   <div className="si-rack-row">
-                    <select name="boxId" value={formData.boxId} onChange={handleInputChange} className="si-rack-select">
-                      <option value="">Select Box</option>
-                      {boxes.map(b => <option key={b.boxId} value={b.boxId}>{b.boxNumber} - {b.boxLabel}</option>)}
-                    </select>
+                    <div className="si-rack-select">
+                      <SearchableSelect
+                        options={boxOptions}
+                        value={formData.boxId}
+                        onChange={handleBoxSelect}
+                        placeholder="Select Box"
+                        disabled={!formData.rackId}
+                      />
+                    </div>
                     <button type="button" className="si-icon-btn si-icon-btn-primary"
-                      disabled={!formData.rackId} onClick={() => setShowModalNewBox(!showModalNewBox)}>
+                      disabled={!formData.rackId}
+                      onClick={() => {
+                        const next = !showModalNewBox;
+                        if (next) {
+                          const suggested = getNextBoxNumber(boxes);
+                          setModalNewBox({ boxNumber: suggested, boxLabel: suggested });
+                        }
+                        setShowModalNewBox(next);
+                      }}>
                       <FiPlus size={15} />
                     </button>
                   </div>
@@ -655,9 +853,16 @@ const Products = () => {
                     <div className="inline-create-form">
                       <p className="inline-form-title"><FiBox size={13} /> New Box in {racks.find(r => r.rackId === parseInt(formData.rackId))?.rackName}</p>
                       <div className="inline-form-grid">
-                        <input placeholder="Box Number" value={modalNewBox.boxNumber} onChange={e => setModalNewBox(p => ({ ...p, boxNumber: e.target.value }))} />
-                        <input placeholder="Box Label"  value={modalNewBox.boxLabel}  onChange={e => setModalNewBox(p => ({ ...p, boxLabel: e.target.value }))} />
+                        <input
+                          placeholder="Box Number"
+                          value={modalNewBox.boxNumber}
+                          onChange={e => setModalNewBox({ boxNumber: e.target.value, boxLabel: e.target.value })}
+                          autoFocus
+                        />
                       </div>
+                      <p className="inline-form-hint">
+                        Label is set automatically to "{modalNewBox.boxNumber || '—'}" — no separate label needed.
+                      </p>
                       <div className="inline-form-actions">
                         <button type="button" className="btn-inline-save" onClick={handleModalSaveBox} disabled={savingBox}>{savingBox ? 'Saving...' : 'Save Box'}</button>
                         <button type="button" className="btn-inline-cancel" onClick={() => setShowModalNewBox(false)}>Cancel</button>
@@ -687,7 +892,11 @@ const Products = () => {
 
       {/* ── DETAIL MODAL ── */}
       {detailProduct && (
-        <div className="modal-overlay" onClick={() => setDetailProduct(null)}>
+        <div
+          className="modal-overlay"
+          onMouseDown={handleOverlayMouseDown}
+          onClick={e => handleOverlayClick(e, () => setDetailProduct(null))}
+        >
           <div className="modal-content prod-detail-modal" onClick={e => e.stopPropagation()}>
             <div className="prod-modal-head">
               <h2><FiPackage size={18} style={{ marginRight: 8, color: '#667eea' }}/>{detailProduct.description || detailProduct.partNumber || 'Product Details'}</h2>
@@ -723,6 +932,10 @@ const Products = () => {
                 <div className="prod-detail-row">
                   <span className="prod-detail-label">Manufacturer P/N</span>
                   <span className="prod-detail-mono">{detailProduct.manufacturerPn || '—'}</span>
+                </div>
+                <div className="prod-detail-row">
+                  <span className="prod-detail-label">Make</span>
+                  <span>{detailProduct.make || '—'}</span>
                 </div>
                 <div className="prod-detail-row">
                   <span className="prod-detail-label">Supplier</span>

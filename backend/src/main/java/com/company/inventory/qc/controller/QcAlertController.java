@@ -2,18 +2,36 @@ package com.company.inventory.qc.controller;
 
 import com.company.inventory.qc.dto.QcAlertDto;
 import com.company.inventory.qc.service.QcAlertService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 
+/**
+ * ★ SECURITY FIX — this controller had NO @PreAuthorize at all.
+ *
+ * Every other QC controller gates on OWNER/STORE_MANAGER/QC. This one and
+ * QcDashboardController were written from a thinner template and never got the
+ * security pass, so ANY authenticated user could read every QC alert and
+ * bulk-delete them.
+ *
+ * Note the real fix is default-deny on /api/qc/** in SecurityConfig — see
+ * sql/README-SECURITY.md. These annotations close today's hole; they guarantee
+ * nothing about the next controller someone adds.
+ */
 @RestController
 @RequestMapping("/api/qc/alerts")
 @RequiredArgsConstructor
-@Slf4j // <-- Injected for routing diagnostics
+@SecurityRequirement(name = "Bearer Authentication")
+@Tag(name = "QC Alerts")
+@PreAuthorize("hasAnyAuthority('OWNER','STORE_MANAGER','QC')")   // ★ class-level default
+@Slf4j
 public class QcAlertController {
 
     private final QcAlertService alertService;
@@ -106,8 +124,11 @@ public class QcAlertController {
      */
     @DeleteMapping("/bulk")
     public ResponseEntity<Map<String, Object>> deleteBulk(@RequestBody java.util.List<Long> alertIds) {
+        if (alertIds == null || alertIds.isEmpty()) {
+            return ResponseEntity.ok(Map.of("success", true, "deletedCount", 0));
+        }
         log.info("DELETE /api/qc/alerts/bulk — removing {} alerts.", alertIds.size());
-        int count = alertService.deleteAlerts(alertIds);
+        int count = alertService.deleteAlerts(alertIds);   // ★ single statement now
         return ResponseEntity.ok(Map.of("success", true, "deletedCount", count));
     }
 }

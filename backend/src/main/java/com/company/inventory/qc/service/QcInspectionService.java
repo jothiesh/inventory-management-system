@@ -63,7 +63,23 @@ public class QcInspectionService {
 	@Transactional(readOnly = true)
 	public List<QcQueueItemDto> getPendingQueue() {
 		log.debug("Polling core SIB repository layer to assemble the real-time active 'PENDING_QC' work queue.");
-		return batchRepo.findByQcStatusOrderByCreatedAtDesc(QcStatus.PENDING_QC.name()).stream().map(this::toQueueItem)
+		// ★ FIX: only show batches that actually have something to inspect.
+		//   A batch can be PENDING_QC yet have ZERO undecided lots — e.g. an
+		//   empty batch, or one whose lots were all quarantined when a DC was
+		//   raised. Those showed as "0 items" rows that can never be inspected
+		//   and never leave the queue. Filter them out.
+		return batchRepo.findByQcStatusOrderByCreatedAtDesc(QcStatus.PENDING_QC.name()).stream()
+				.filter(batch -> {
+					long pending = stockBridge.getLotsForBatch(batch.getId()).stream()
+							.filter(l -> l.getQcDecision() == null || l.getQcDecision().isBlank())
+							.count();
+					if (pending == 0) {
+						log.debug("Queue skip: batch {} has 0 undecided lots — not inspectable.",
+								batch.getBatchRef());
+					}
+					return pending > 0;
+				})
+				.map(this::toQueueItem)
 				.collect(Collectors.toList());
 	}
 
@@ -557,4 +573,5 @@ public class QcInspectionService {
 	private BigDecimal nz(BigDecimal v) {
 		return v == null ? BigDecimal.ZERO : v;
 	}
+	
 }

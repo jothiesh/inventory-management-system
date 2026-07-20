@@ -866,3 +866,41 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+
+
+
+
+
+
+
+/* ══════════════════════════════════════════════════════
+   ★ RECURRENCE BADGES
+   Alerts now re-remind on a backoff (2d, 4d, 8d, 16d, 30d)
+   instead of firing once and going stale.
+   ══════════════════════════════════════════════════════ */
+.qa-repeat-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.qa-next-due {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+

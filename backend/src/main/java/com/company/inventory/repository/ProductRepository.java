@@ -14,7 +14,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     // Find by part number
     Optional<Product> findByPartNumber(String partNumber);
-    
+
     // Check if part number exists
     boolean existsByPartNumber(String partNumber);
 
@@ -24,11 +24,12 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     // Find active products
     List<Product> findByIsActiveTrue();
 
-    // Search products - FIXED field names
+    // Search products - FIXED field names (+ make)
     @Query("SELECT p FROM Product p WHERE " +
            "LOWER(p.partNumber) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
            "LOWER(p.description) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
            "LOWER(p.manufacturerPn) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "LOWER(p.make) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
            "LOWER(p.packageType) LIKE LOWER(CONCAT('%', :keyword, '%'))")
     List<Product> searchProducts(@Param("keyword") String keyword);
 

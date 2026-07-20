@@ -241,14 +241,18 @@
 /* ── TABLE ── */
 .rc-table-wrap { overflow-x: auto; }
 .rc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.rc-table thead { background: #f8fafc; }
+
+
+.rc-table thead { background: #151E31; }
 .rc-table th {
   padding: 10px 12px; text-align: left; font-size: 10px;
-  font-weight: 800; color: #475569; text-transform: uppercase;
-  letter-spacing: 0.4px; border-bottom: 2px solid #e2e8f0;
+  font-weight: 800; color: #DCDBD5; text-transform: uppercase;
+  letter-spacing: 0.4px; border-bottom: 2px solid #151E31;
   white-space: nowrap;
 }
 .rc-table th.num { text-align: right; }
+
+
 .rc-table td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
 .rc-table td.num { text-align: right; }
 .rc-row { transition: background 0.12s; }
@@ -677,4 +681,68 @@
 /* keep print clean — hide new chrome */
 @media print {
   .rcd-stats, .rcd-copy-btn, .rcd-refresh-btn, .rcd-print-mini, .rdc-preview-hint { display: none !important; }
+}
+
+
+
+
+
+
+
+/* ════════════════════════════════════════════════════════════
+   ★ INLINE-EDITABLE RETURN CHALLAN (ReturnChallanDetail)
+   Click "Edit Fields" in the print modal → every red-dashed field
+   becomes typable. Edits apply to the printed / PDF copy.
+   ════════════════════════════════════════════════════════════ */
+
+/* editable field — dashed underline hint, only while editing */
+.rdc-editable {
+  outline: none;
+  border-bottom: 1px dashed #dc2626;
+  cursor: text;
+  min-width: 12px;
+  transition: background 0.15s;
+}
+.rdc-editable:hover  { background: #fff1f2; }
+.rdc-editable:focus  { background: #fef2f2; border-bottom-color: #b91c1c; box-shadow: 0 1px 0 #b91c1c; }
+
+/* empty field shows its placeholder */
+.rdc-editable:empty::before {
+  content: attr(data-placeholder);
+  color: #cbd5e1;
+}
+
+/* the whole doc in edit mode — subtle tint so it's obvious it's live */
+.rdc-doc-editable { box-shadow: inset 0 0 0 2px rgba(220,38,38,0.25); }
+
+/* edit hint bar under the modal header */
+.rdc-edit-hint {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 16px; background: #fef2f2; color: #991b1b;
+  font-size: 12px; font-weight: 600;
+  border-bottom: 1px solid #fecaca;
+}
+
+/* header buttons */
+.dc-btn-ghost {
+  background: rgba(255,255,255,0.12); color: #e2e8f0;
+  border: 1px solid rgba(255,255,255,0.25);
+}
+.dc-btn-ghost:hover { background: rgba(255,255,255,0.22); color: #fff; }
+.dc-btn-editing {
+  background: #dc2626; color: #fff; border: 1px solid #dc2626;
+}
+.dc-btn-editing:hover { background: #b91c1c; }
+
+/* ── PRINT: strip every edit affordance so the paper is clean ── */
+@media print {
+  .rdc-editable {
+    border-bottom: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  .rdc-editable:empty::before { content: '' !important; }
+  .rdc-doc-editable { box-shadow: none !important; }
+  .rdc-edit-hint,
+  .dc-btn-ghost, .dc-btn-editing { display: none !important; }
 }

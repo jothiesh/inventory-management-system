@@ -125,18 +125,19 @@
 }
 
 /* ── TABLE ── */
-.qcl-table-wrap { overflow-x: auto; }
-.qcl-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.qcl-table thead { background: #f8fafc; }
+.qcl-table thead { background: #151E31; }
 .qcl-table th {
   padding: 11px 12px;
   text-align: left;
-  font-size: 10px; font-weight: 800; color: #475569;
+  font-size: 10px; font-weight: 700; color: #DCDBD5;
   text-transform: uppercase; letter-spacing: 0.4px;
-  border-bottom: 2px solid #e2e8f0;
-  border-right: 1px solid #d1d9e0;   /* ★ column separator */
+  border-bottom: 2px solid #151E31;
+  border-right: 1px solid rgba(220, 219, 213, 0.15);   /* ★ column separator */
   white-space: nowrap;
 }
+
+
+
 .qcl-table th:last-child { border-right: none; }
 .qcl-table th.num { text-align: right; }
 .qcl-th-accepted { color: #059669 !important; }
@@ -421,4 +422,83 @@ table .qcl-dl-btn.excel {
 }
 .qcl-table tbody tr:nth-child(even):hover td {
   background: #f1f5f9 !important;
+}
+
+/* ── Details button ── */
+.qcl-btn-details {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 10px; border: 1.5px solid #c7d2fe; border-radius: 7px;
+  background: #eef2ff; color: #4f46e5;
+  font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit;
+  white-space: nowrap; transition: all 0.15s;
+}
+.qcl-btn-details:hover {
+  background: #4f46e5; color: #fff; border-color: #4f46e5;
+  box-shadow: 0 3px 8px rgba(79,70,229,0.28);
+}
+
+/* ── Details modal ── */
+.qcl-modal-overlay {
+  position: fixed; inset: 0; background: rgba(10,15,30,0.6);
+  z-index: 1000; display: flex; align-items: center; justify-content: center;
+  padding: 20px; backdrop-filter: blur(3px);
+}
+.qcl-modal {
+  background: #fff; border-radius: 14px; width: 100%; max-width: 540px;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.3); overflow: hidden;
+  animation: qclModalIn 0.22s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes qclModalIn {
+  from { opacity: 0; transform: scale(0.93) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.qcl-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; background: linear-gradient(135deg,#1e293b,#0f172a); gap: 12px;
+}
+.qcl-modal-head-left { display: flex; flex-direction: column; gap: 2px; }
+.qcl-modal-title { font-size: 15px; font-weight: 800; color: #fff; }
+.qcl-modal-sub { font-size: 11px; color: #94a3b8; font-weight: 500; }
+.qcl-modal-close {
+  background: rgba(255,255,255,0.1); border: none; width: 28px; height: 28px;
+  border-radius: 7px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: #94a3b8; transition: all 0.15s; flex-shrink: 0;
+}
+.qcl-modal-close:hover { background: rgba(255,255,255,0.2); color: #fff; }
+
+.qcl-modal-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+
+.qcl-modal-qty-strip {
+  display: grid; grid-template-columns: repeat(4,1fr); gap: 8px;
+}
+.qcl-modal-qty {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 10px 6px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 9px;
+}
+.qcl-modal-qty strong { font-size: 18px; font-weight: 800; color: #1e293b; }
+.qcl-modal-qty span { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4px; }
+.qcl-mq-acc strong  { color: #059669; }
+.qcl-mq-rej strong  { color: #dc2626; }
+.qcl-mq-held strong { color: #d97706; }
+
+.qcl-modal-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+}
+.qcl-modal-field { display: flex; flex-direction: column; gap: 3px; }
+.qcl-modal-field-label {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 10px; font-weight: 700; color: #94a3b8;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.qcl-modal-field-value { font-size: 13px; font-weight: 600; color: #1e293b; word-break: break-word; }
+
+.qcl-modal-remarks {
+  display: flex; flex-direction: column; gap: 5px;
+  padding-top: 10px; border-top: 1px solid #f1f5f9;
+}
+.qcl-modal-remarks p { font-size: 13px; color: #475569; margin: 0; }
+
+.qcl-modal-foot {
+  display: flex; gap: 8px; justify-content: flex-end;
+  padding: 12px 18px; border-top: 1px solid #f1f5f9; background: #f8fafc;
 }

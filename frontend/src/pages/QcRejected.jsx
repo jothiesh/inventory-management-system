@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import {
   FiAlertTriangle, FiSearch, FiX, FiRefreshCw, FiDownload,
   FiPackage, FiUser, FiCalendar, FiHash, FiSend, FiEye,
+  FiArrowUp, FiArrowDown,
   FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight,
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
@@ -16,6 +17,14 @@ const fmtDate = (iso) => {
   try { return new Date(iso).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }); }
   catch { return '—'; }
 };
+
+const SORT_OPTIONS = [
+  { key: 'invoiceNo',    label: 'Invoice No' },
+  { key: 'supplierName', label: 'Supplier'   },
+  { key: 'inspectedAt',  label: 'Date'       },
+  { key: 'categoryName', label: 'Category'   },
+];
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 // DC status badge
 const DcBadge = ({ status, onClick }) => {
@@ -46,12 +55,16 @@ const QcRejected = () => {
   const [loading,     setLoading]     = useState(true);
   const [search,      setSearch]      = useState('');
   const [page,        setPage]        = useState(1);
+  const [pageSize,    setPageSize]    = useState(15);
+  const [sortBy,      setSortBy]      = useState('inspectedAt');
+  const [sortDir,     setSortDir]     = useState('desc');
   const [creating,    setCreating]    = useState(null);
   const [dcMap,       setDcMap]       = useState({}); // batchId → { dcId, status }
-  const PS = 15;
 
-  // ★ OWNER + STORE_MANAGER can create DC. QC can only view.
-  const isOwner = ['OWNER', 'STORE_MANAGER'].includes(user?.role);
+  // ★ OWNER + STORE_MANAGER + QC can all create DC. The backend controller
+  //   already allows QC (hasAnyAuthority('OWNER','STORE_MANAGER','QC')); this
+  //   was the only gate hiding the button from the QC role.
+  const canCreateDc = ['OWNER', 'STORE_MANAGER', 'QC'].includes(user?.role);
 
   // ── Load rejected inspections ─────────────────────────────────
   const load = async () => {
@@ -96,7 +109,6 @@ const QcRejected = () => {
       const r  = await returnChallanApi.create(insp.batchId, null);
       const dc = r.data.data;
       toast.success(`✅ DC ${dc.dcNumber} created!`);
-      // update map immediately — no full reload
       setDcMap(prev => ({ ...prev, [insp.batchId]: { dcId: dc.id, status: 'DRAFT' } }));
       navigate(`/qc/return-challans/${dc.id}`);
     } catch (e) {
@@ -114,7 +126,7 @@ const QcRejected = () => {
       const url = URL.createObjectURL(r.data);
       const a   = document.createElement('a');
       a.href     = url;
-      a.download = `QC-REJECTED-${insp.batchRef || insp.id}.pdf`;
+      a.download = `QC-REJECTED-${insp.invoiceNo || insp.id}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch { toast.error('PDF download failed'); }
@@ -129,7 +141,7 @@ const QcRejected = () => {
       const url = URL.createObjectURL(r.data);
       const a   = document.createElement('a');
       a.href     = url;
-      a.download = `QC-REJECTED-${insp.batchRef || insp.id}.xlsx`;
+      a.download = `QC-REJECTED-${insp.invoiceNo || insp.id}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch { toast.error('Excel download failed'); }
@@ -143,20 +155,37 @@ const QcRejected = () => {
     dcRaised: Object.keys(dcMap).length,
   }), [inspections, dcMap]);
 
-  // ── Filter + paginate ─────────────────────────────────────────
+  // ── Filter + sort + paginate ──────────────────────────────────
   const filtered = useMemo(() => {
-    if (!search.trim()) return inspections;
-    const q = search.toLowerCase();
-    return inspections.filter(i =>
-      [i.batchRef, i.supplierName, i.invoiceNo, i.inspectorName, i.categoryName, i.overallRemarks]
-        .filter(Boolean).some(f => f.toLowerCase().includes(q))
-    );
-  }, [inspections, search]);
+    let list = inspections;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(i =>
+        [i.supplierName, i.invoiceNo, i.inspectorName, i.categoryName, i.overallRemarks]
+          .filter(Boolean).some(f => f.toLowerCase().includes(q))
+      );
+    }
+    return [...list].sort((a, b) => {
+      let va, vb;
+      switch (sortBy) {
+        case 'invoiceNo':    va = a.invoiceNo || '';    vb = b.invoiceNo || '';    break;
+        case 'supplierName': va = a.supplierName || ''; vb = b.supplierName || ''; break;
+        case 'categoryName': va = a.categoryName || ''; vb = b.categoryName || ''; break;
+        case 'inspectedAt':
+          va = a.inspectedAt ? new Date(a.inspectedAt).getTime() : 0;
+          vb = b.inspectedAt ? new Date(b.inspectedAt).getTime() : 0; break;
+        default: return 0;
+      }
+      if (va < vb) return sortDir === 'asc' ? -1 : 1;
+      if (va > vb) return sortDir === 'asc' ?  1 : -1;
+      return 0;
+    });
+  }, [inspections, search, sortBy, sortDir]);
 
-  const tp    = Math.max(1, Math.ceil(filtered.length / PS));
+  const tp    = Math.max(1, Math.ceil(filtered.length / pageSize));
   const sp    = Math.min(page, tp);
-  const paged = filtered.slice((sp-1)*PS, sp*PS);
-  useEffect(() => { setPage(1); }, [search]);
+  const paged = filtered.slice((sp-1)*pageSize, sp*pageSize);
+  useEffect(() => { setPage(1); }, [search, sortBy, sortDir, pageSize]);
   const goTo = (p) => setPage(Math.max(1, Math.min(p, tp)));
 
   return (
@@ -176,8 +205,7 @@ const QcRejected = () => {
           </div>
         </div>
         <div style={{display:'flex', gap:8, alignItems:'center'}}>
-          {/* OWNER-only: go to Return Challans list */}
-          {isOwner && (
+          {canCreateDc && (
             <button onClick={() => navigate('/qc/return-challans')} style={{
               display:'flex', alignItems:'center', gap:6,
               padding:'8px 14px', background:'#dc2626', color:'#fff',
@@ -217,8 +245,27 @@ const QcRejected = () => {
         <FiSearch size={15} className="qca-search-icon"/>
         <input className="qca-search-input" value={search}
           onChange={e=>setSearch(e.target.value)}
-          placeholder="Search batch, supplier, invoice, inspector..."/>
+          placeholder="Search invoice, supplier, inspector..."/>
         {search && <button className="qca-search-clear" onClick={()=>setSearch('')}><FiX size={13}/></button>}
+      </div>
+
+      {/* ── Sort + Show toolbar ── */}
+      <div className="qca-toolbar">
+        <div className="qca-toolbar-group">
+          <span className="qca-toolbar-label">Show</span>
+          <select className="qca-toolbar-select" value={pageSize} onChange={e => setPageSize(Number(e.target.value))}>
+            {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        <div className="qca-toolbar-group">
+          <span className="qca-toolbar-label">Sort</span>
+          <select className="qca-toolbar-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+            {SORT_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+          </select>
+          <button className="qca-sort-dir" onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')} title="Toggle direction">
+            {sortDir === 'asc' ? <FiArrowUp size={14} /> : <FiArrowDown size={14} />}
+          </button>
+        </div>
       </div>
 
       {/* TABLE */}
@@ -237,13 +284,12 @@ const QcRejected = () => {
             <table className="qca-table">
               <thead><tr>
                 <th>#</th>
-                <th>BATCH REF</th>
+                <th>INVOICE</th>
                 <th>CATEGORY</th>
                 <th>SUPPLIER</th>
-                <th>INVOICE</th>
                 <th>INSPECTOR</th>
                 <th className="num">RECEIVED</th>
-                <th className="num" style={{color:'#dc2626'}}>REJECTED</th>
+                <th className="num" style={{color:'#DCDBD5'}}>REJECTED</th>
                 <th>DATE</th>
                 <th>DC STATUS</th>
                 <th>ACTIONS</th>
@@ -254,11 +300,11 @@ const QcRejected = () => {
                   const hasDc  = !!dcInfo;
                   return (
                     <tr key={insp.id} className="qca-row">
-                      <td className="qca-num">{(sp-1)*PS+idx+1}</td>
+                      <td className="qca-num">{(sp-1)*pageSize+idx+1}</td>
                       <td>
                         <span className="qca-batch-ref" style={{color:'#dc2626'}}>
                           <FiHash size={9}/>
-                          {insp.batchRef || `SIB-${String(insp.id).padStart(5,'0')}`}
+                          {insp.invoiceNo || '—'}
                         </span>
                       </td>
                       <td>
@@ -267,7 +313,6 @@ const QcRejected = () => {
                           : <span className="qca-faded">—</span>}
                       </td>
                       <td className="qca-strong">{insp.supplierName||'—'}</td>
-                      <td className="qca-faded">{insp.invoiceNo||'—'}</td>
                       <td>
                         {insp.inspectorName
                           ? <span className="qca-inspector"><FiUser size={10}/> {insp.inspectorName}</span>
@@ -281,7 +326,6 @@ const QcRejected = () => {
                       </td>
                       <td className="qca-faded">{fmtDate(insp.inspectedAt)}</td>
 
-                      {/* DC STATUS */}
                       <td>
                         <DcBadge
                           status={dcInfo?.status || null}
@@ -289,10 +333,8 @@ const QcRejected = () => {
                         />
                       </td>
 
-                      {/* ACTIONS */}
                       <td>
                         <div style={{display:'flex', gap:5, alignItems:'center', flexWrap:'wrap'}}>
-                          {/* PDF — both roles */}
                           {insp.pdfPath && (
                             <button className="qca-pdf-btn"
                               style={{background:'linear-gradient(135deg,#ef4444,#dc2626)'}}
@@ -300,14 +342,12 @@ const QcRejected = () => {
                               <FiDownload size={12}/> PDF
                             </button>
                           )}
-                          {/* Excel — both roles */}
                           <button className="qca-pdf-btn"
                             style={{background:'linear-gradient(135deg,#16a34a,#15803d)',fontSize:10}}
                             onClick={()=>downloadExcel(insp)} title="Download Excel">
                             <FiDownload size={12}/> Excel
                           </button>
 
-                          {/* View DC — both roles (if DC exists) */}
                           {hasDc && (
                             <button onClick={()=>navigate(`/qc/return-challans/${dcInfo.dcId}`)}
                               style={{display:'inline-flex',alignItems:'center',gap:4,
@@ -318,8 +358,7 @@ const QcRejected = () => {
                             </button>
                           )}
 
-                          {/* Create DC — OWNER only, no DC yet */}
-                          {isOwner && !hasDc && (
+                          {canCreateDc && !hasDc && (
                             <button onClick={()=>handleCreateDc(insp)}
                               disabled={creating===insp.batchId}
                               style={{display:'inline-flex',alignItems:'center',gap:4,
@@ -345,7 +384,7 @@ const QcRejected = () => {
         {/* PAGINATION */}
         {filtered.length > 0 && (
           <div className="qca-pagination">
-            <span className="qca-pg-info">{(sp-1)*PS+1}–{Math.min(sp*PS, filtered.length)} of {filtered.length}</span>
+            <span className="qca-pg-info">{(sp-1)*pageSize+1}–{Math.min(sp*pageSize, filtered.length)} of {filtered.length}</span>
             <div className="qca-pg-controls">
               <button className="qca-pg-btn" onClick={()=>goTo(1)} disabled={sp===1}><FiChevronsLeft size={13}/></button>
               <button className="qca-pg-btn" onClick={()=>goTo(sp-1)} disabled={sp===1}><FiChevronLeft size={13}/></button>

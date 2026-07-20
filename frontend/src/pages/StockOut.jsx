@@ -5,11 +5,10 @@ import { toast } from 'react-toastify';
 import {
   FiTrendingDown, FiSearch, FiX, FiCheck, FiRefreshCw,
   FiAlertTriangle, FiCheckCircle, FiShoppingCart, FiTrash2,
-  FiPackage, FiHash, FiTag, FiMapPin, FiLayers, FiBarChart2,
+  FiPackage, FiMapPin, FiLayers,
   FiFilter, FiChevronLeft, FiChevronRight, FiChevronsLeft,
   FiChevronsRight, FiPlus, FiEdit2, FiSave, FiRotateCw,
-  FiAlignLeft, FiActivity, FiArrowLeft, FiInfo, FiBookOpen,
-  FiDollarSign, FiBox, FiZap, FiCpu, FiGrid, FiFileText,
+  FiArrowLeft, FiBookOpen, FiZap, FiFileText, FiTruck,
 } from 'react-icons/fi';
 import './StockOut.css';
 
@@ -18,6 +17,7 @@ const fmtCur = (v) => parseFloat(v || 0).toLocaleString('en-IN', { minimumFracti
 
 const TX_CFG = {
   Production:  { icon: '🏭', color: '#4f46e5', bg: '#eef2ff', border: '#c7d2fe', desc: 'Used in manufacturing' },
+  Assembly:    { icon: '🔩', color: '#0f766e', bg: '#f0fdfa', border: '#99f6e4', desc: 'Issued to assembly line' },
   Sale:        { icon: '💰', color: '#059669', bg: '#ecfdf5', border: '#a7f3d0', desc: 'Sold to customer'      },
   Semi_Finish: { icon: '🔧', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', desc: 'Semi-finished goods'   },
   Damage:      { icon: '⚠️', color: '#d97706', bg: '#fffbeb', border: '#fde68a', desc: 'Damaged / unusable'    },
@@ -31,7 +31,9 @@ const txLabel = (item) => {
   return item.transactionType;
 };
 
-const DRAFT_KEY = 'so-cart-v2';
+const typeOption = (t) => (t === 'Semi_Finish' ? 'Semi-Finish' : t === 'Other' ? 'Custom…' : t);
+
+const DRAFT_KEY = 'so-cart-v3';
 const saveDraft  = (cart) => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ cart, savedAt: new Date().toISOString() })); } catch {} };
 const loadDraft  = () => { try { const r = localStorage.getItem(DRAFT_KEY); return r ? JSON.parse(r) : null; } catch { return null; } };
 const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch {} };
@@ -40,7 +42,7 @@ const timeAgo    = (iso) => { if (!iso) return ''; const m = Math.floor((Date.no
 const HL = ({ text, q }) => {
   if (!q?.trim() || !text) return text;
   const rx = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-  return text.split(rx).map((p, i) => rx.test(p) ? <mark key={i} className="so-hl">{p}</mark> : p);
+  return text.split(rx).map((p, i) => (i % 2 === 1 ? <mark key={i} className="so-hl">{p}</mark> : p));
 };
 
 /* ════════════════════════════════════════════════════
@@ -69,8 +71,8 @@ const InstructionsPage = ({ onClose }) => (
           </div>
           <div className="so-ins-section">
             <div className="so-ins-step-num">02</div>
-            <h3>Review Cart & Set Details</h3>
-            <p>Open the <strong>Cart page</strong>. For each item, type the quantity, select a transaction type, and optionally add a work order reference.</p>
+            <h3>Fill In Details</h3>
+            <p>Open the <strong>Cart page</strong>. Every field is directly editable — type the quantity, pick an issue type, and optionally add a reference and notes.</p>
             <div className="so-ins-tip">💡 Pick "Custom…" to type your own issue type</div>
           </div>
           <div className="so-ins-section">
@@ -129,12 +131,24 @@ const InstructionsPage = ({ onClose }) => (
 );
 
 /* ════════════════════════════════════════════════════
-   CART FULL-SCREEN PAGE
+   CART FULL-SCREEN PAGE  — always-editable rows
 ════════════════════════════════════════════════════ */
-const CartPage = ({ cart, setCart, onBack, onSubmit, submitting, products }) => {
-  const [editingIdx, setEditingIdx]   = useState(null);
-  const [stockData, setStockData]     = useState({});
+const CartPage = ({ cart, setCart, onBack, onSubmit, submitting, products, onAddProduct }) => {
+  const [expandedIdx, setExpandedIdx]   = useState(null);   // FIFO lot breakdown toggle
+  const [stockData, setStockData]       = useState({});
   const [loadingStock, setLoadingStock] = useState({});
+  const [addQuery, setAddQuery]         = useState('');     // ★ add-more-items search
+
+  // Products matching the search that are NOT already in the cart
+  const addMatches = useMemo(() => {
+    if (!addQuery.trim()) return [];
+    const q = addQuery.toLowerCase();
+    return (products || [])
+      .filter(p => !cart.some(c => c.productId === p.productId))
+      .filter(p => [p.partNumber, p.description, p.categoryName, p.supplierName]
+        .filter(Boolean).some(v => v.toLowerCase().includes(q)))
+      .slice(0, 8);
+  }, [addQuery, products, cart]);
 
   useEffect(() => {
     cart.forEach(async (item) => {
@@ -147,7 +161,7 @@ const CartPage = ({ cart, setCart, onBack, onSubmit, submitting, products }) => 
         setLoadingStock(prev => ({ ...prev, [item.productId]: false }));
       }
     });
-  }, [cart]);
+  }, [cart]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateCart = (idx, field, value) => {
     setCart(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
@@ -155,31 +169,28 @@ const CartPage = ({ cart, setCart, onBack, onSubmit, submitting, products }) => 
 
   const removeFromCart = (idx) => {
     setCart(prev => prev.filter((_, i) => i !== idx));
-    if (editingIdx === idx) setEditingIdx(null);
-    else if (editingIdx > idx) setEditingIdx(editingIdx - 1);
+    if (expandedIdx === idx) setExpandedIdx(null);
+    else if (expandedIdx > idx) setExpandedIdx(expandedIdx - 1);
   };
 
-  const cartValid = cart.length > 0 && cart.every(item => {
+  const itemReady = (item) => {
     const qty = parseFloat(item.quantity);
     const typeOk = item.transactionType !== 'Other' || (item.customType && item.customType.trim());
     return qty > 0 && qty <= item.maxStock && typeOk;
-  });
+  };
 
+  const cartValid  = cart.length > 0 && cart.every(itemReady);
   const totalQty   = cart.reduce((s, i) => s + parseFloat(i.quantity || 0), 0);
   const totalItems = cart.length;
-  const readyItems = cart.filter(i => {
-    const qty = parseFloat(i.quantity);
-    const typeOk = i.transactionType !== 'Other' || (i.customType && i.customType.trim());
-    return qty > 0 && qty <= i.maxStock && typeOk;
-  }).length;
+  const readyItems = cart.filter(itemReady).length;
 
   const handleSubmit = () => {
     if (!cartValid) {
-      const missing = cart.filter(i => !i.quantity || parseFloat(i.quantity) <= 0);
-      const over    = cart.filter(i => parseFloat(i.quantity) > i.maxStock);
+      const missing  = cart.filter(i => !i.quantity || parseFloat(i.quantity) <= 0);
+      const over     = cart.filter(i => parseFloat(i.quantity) > i.maxStock);
       const noCustom = cart.filter(i => i.transactionType === 'Other' && (!i.customType || !i.customType.trim()));
-      if (missing.length > 0) toast.error(`${missing.length} item(s) missing quantity`);
-      else if (over.length > 0) toast.error(`${over.length} item(s) exceed available stock`);
+      if (missing.length > 0)       toast.error(`${missing.length} item(s) missing quantity`);
+      else if (over.length > 0)     toast.error(`${over.length} item(s) exceed available stock`);
       else if (noCustom.length > 0) toast.error(`${noCustom.length} item(s) need a custom type label`);
       return;
     }
@@ -220,10 +231,46 @@ const CartPage = ({ cart, setCart, onBack, onSubmit, submitting, products }) => 
         <span className="so-cp-label">{readyItems}/{totalItems} items ready to issue</span>
       </div>
 
+      {/* ★ ADD MORE ITEMS — search & add without leaving the cart */}
+      <div className="so-cart-add so-animate-in">
+        <div className="so-cart-add-bar">
+          <FiPlus size={14} className="so-cart-add-plus" />
+          <input
+            className="so-cart-add-input"
+            value={addQuery}
+            onChange={e => setAddQuery(e.target.value)}
+            placeholder="Add more items — search part number, description, supplier…"
+          />
+          {addQuery && (
+            <button className="so-search-clear" onClick={() => setAddQuery('')}><FiX size={12} /></button>
+          )}
+        </div>
+        {addQuery.trim() && (
+          <div className="so-cart-add-results">
+            {addMatches.length === 0 ? (
+              <div className="so-cart-add-empty">
+                No matching products{cart.length > 0 ? ' (items already in cart are hidden)' : ''}
+              </div>
+            ) : addMatches.map(p => (
+              <button key={p.productId} className="so-cart-add-row"
+                onClick={() => { onAddProduct(p); setAddQuery(''); }}>
+                <span className="so-mono" style={{ fontSize: 11 }}>{p.partNumber || '—'}</span>
+                <span className="so-cart-add-desc">{p.description || '—'}</span>
+                {p.supplierName && <span className="so-supplier">{p.supplierName}</span>}
+                <span className={`so-stock-val ${p.stockStatus === 'LOW_STOCK' ? 'low' : 'ok'}`} style={{ marginLeft: 'auto' }}>
+                  {fmt(p.totalStock, 0)} in stock
+                </span>
+                <span className="so-cart-add-cta"><FiPlus size={11} /> Add</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {cart.length === 0 ? (
         <div className="so-empty" style={{ padding: '80px 20px' }}>
           <FiShoppingCart size={40} />
-          <span>Cart is empty — go back to add products</span>
+          <span>Cart is empty — search above to add items, or go back to the product table</span>
           <button className="so-btn-primary" onClick={onBack}><FiArrowLeft size={13} /> Back to Products</button>
         </div>
       ) : (
@@ -231,12 +278,12 @@ const CartPage = ({ cart, setCart, onBack, onSubmit, submitting, products }) => 
           <table className="so-table so-cart-table">
             <thead>
               <tr>
-                <th style={{ width: 40 }}>#</th>
+                <th style={{ width: 36 }}>#</th>
                 <th>PART NO.</th>
                 <th>DESCRIPTION</th>
+                <th>SUPPLIER</th>
                 <th>CATEGORY</th>
-                <th>LOCATION</th>
-                <th>AVAIL. STOCK</th>
+                <th>AVAIL.</th>
                 <th>UNIT PRICE</th>
                 <th>LOTS</th>
                 <th>QTY TO ISSUE</th>
@@ -250,25 +297,26 @@ const CartPage = ({ cart, setCart, onBack, onSubmit, submitting, products }) => 
             </thead>
             <tbody>
               {cart.map((item, idx) => {
-                const isEditing = editingIdx === idx;
-                const stock     = stockData[item.productId];
-                const qty       = parseFloat(item.quantity || 0);
-                const isOver    = qty > item.maxStock;
-                const typeOk    = item.transactionType !== 'Other' || (item.customType && item.customType.trim());
-                const isReady   = qty > 0 && !isOver && typeOk;
-                const cfg       = TX_CFG[item.transactionType] || TX_CFG.Production;
-                const lineTotal = qty * parseFloat(item.unitPrice || 0);
+                const stock      = stockData[item.productId];
+                const qty        = parseFloat(item.quantity || 0);
+                const isOver     = qty > item.maxStock;
+                const isReady    = itemReady(item);
+                const cfg        = TX_CFG[item.transactionType] || TX_CFG.Production;
+                const lineTotal  = qty * parseFloat(item.unitPrice || 0);
+                const isExpanded = expandedIdx === idx;
 
                 return (
-                  <Fragment key={idx}>
-                    <tr className={`so-row so-cart-row ${isEditing ? 'so-row-editing' : ''} ${isOver ? 'so-row-err' : isReady ? 'so-row-ready' : ''}`}>
+                  <Fragment key={item.productId}>
+                    <tr className={`so-row so-cart-row ${isOver ? 'so-row-err' : isReady ? 'so-row-ready' : ''}`}>
                       <td className="so-num">{idx + 1}</td>
                       <td><span className="so-mono">{item.partNumber || '—'}</span></td>
                       <td><span className="so-truncate" title={item.description}>{item.description || '—'}</span></td>
-                      <td>{item.categoryName ? <span className="so-chip">{item.categoryName}</span> : <span className="so-faded">—</span>}</td>
-                      <td className="so-faded" style={{ fontSize: 11 }}>
-                        {item.rackName ? <span style={{ display:'flex',alignItems:'center',gap:3 }}><FiMapPin size={10}/>{item.rackName}</span> : '—'}
+                      <td>
+                        {item.supplierName
+                          ? <span className="so-supplier"><FiTruck size={10} /> {item.supplierName}</span>
+                          : <span className="so-faded">—</span>}
                       </td>
+                      <td>{item.categoryName ? <span className="so-chip">{item.categoryName}</span> : <span className="so-faded">—</span>}</td>
                       <td>
                         <span className={`so-stock-val ${item.maxStock <= 0 ? 'low' : 'ok'}`}>
                           {fmt(item.maxStock, 0)}
@@ -277,87 +325,62 @@ const CartPage = ({ cart, setCart, onBack, onSubmit, submitting, products }) => 
                       <td className="so-faded">
                         {item.unitPrice != null ? `₹${fmtCur(item.unitPrice)}` : '—'}
                       </td>
+
+                      {/* LOTS — click to expand FIFO breakdown */}
                       <td>
                         {loadingStock[item.productId]
                           ? <FiRefreshCw size={11} className="so-spin" style={{ color: '#94a3b8' }} />
-                          : <span className="so-chip" style={{ background: '#f0fdf4', color: '#059669' }}>
-                              {stock?.lots?.length || '—'}
-                            </span>}
+                          : (
+                            <button
+                              className={`so-lots-toggle ${isExpanded ? 'open' : ''}`}
+                              onClick={() => setExpandedIdx(isExpanded ? null : idx)}
+                              title={isExpanded ? 'Hide lot breakdown' : 'Show FIFO lot breakdown'}>
+                              <FiLayers size={11} /> {stock?.lots?.length ?? '—'}
+                            </button>
+                          )}
                       </td>
 
-                      {/* Quantity cell — MANUAL ENTRY ONLY (Task 1) */}
+                      {/* QTY — always editable */}
                       <td>
-                        {isEditing ? (
-                          <div className="so-inline-qty">
-                            <input type="number" step="0.01" min="0.01" max={item.maxStock}
-                              value={item.quantity}
-                              onChange={e => updateCart(idx, 'quantity', e.target.value)}
-                              placeholder="Enter qty"
-                              className={`so-inline-input ${isOver ? 'err' : ''}`}
-                              autoFocus />
-                            {isOver && <span className="so-inline-err">Max: {fmt(item.maxStock)}</span>}
-                          </div>
-                        ) : (
-                          <span className={`so-qty-display ${isOver ? 'err' : isReady ? 'ok' : 'empty'}`}
-                            onClick={() => setEditingIdx(idx)} title="Click to edit">
-                            {item.quantity || <span className="so-qty-hint">Click to set ↗</span>}
-                          </span>
+                        <input type="number" step="0.01" min="0.01" max={item.maxStock}
+                          value={item.quantity}
+                          onChange={e => updateCart(idx, 'quantity', e.target.value)}
+                          placeholder="Qty"
+                          className={`so-cell-input so-cell-qty ${isOver ? 'err' : isReady ? 'ok' : ''}`} />
+                        {isOver && <div className="so-inline-err">Max: {fmt(item.maxStock)}</div>}
+                      </td>
+
+                      {/* ISSUE TYPE — always editable */}
+                      <td>
+                        <select className="so-cell-select"
+                          style={{ borderColor: cfg.border, background: cfg.bg, color: cfg.color }}
+                          value={item.transactionType}
+                          onChange={e => updateCart(idx, 'transactionType', e.target.value)}>
+                          {Object.keys(TX_CFG).map(t => (
+                            <option key={t} value={t}>{typeOption(t)}</option>
+                          ))}
+                        </select>
+                        {item.transactionType === 'Other' && (
+                          <input type="text" value={item.customType || ''}
+                            onChange={e => updateCart(idx, 'customType', e.target.value)}
+                            placeholder="Custom type…"
+                            className={`so-cell-input ${!item.customType?.trim() ? 'err' : ''}`}
+                            style={{ marginTop: 4 }} />
                         )}
                       </td>
 
-                      {/* Transaction type cell — Semi-Finish + Custom (Task 2) */}
+                      {/* REFERENCE — always editable */}
                       <td>
-                        {isEditing ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <select className="so-inline-select"
-                              value={item.transactionType}
-                              onChange={e => updateCart(idx, 'transactionType', e.target.value)}>
-                              {Object.keys(TX_CFG).map(t => (
-                                <option key={t} value={t}>
-                                  {t === 'Semi_Finish' ? 'Semi-Finish' : t === 'Other' ? 'Custom…' : t}
-                                </option>
-                              ))}
-                            </select>
-                            {item.transactionType === 'Other' && (
-                              <input type="text" value={item.customType || ''}
-                                onChange={e => updateCart(idx, 'customType', e.target.value)}
-                                placeholder="Type custom type…"
-                                className={`so-inline-input ${!item.customType?.trim() ? 'err' : ''}`}
-                                style={{ width: 140 }} />
-                            )}
-                          </div>
-                        ) : (
-                          <span className="so-tx-badge" style={{ background: cfg.bg, color: cfg.color, borderColor: cfg.border }}
-                            onClick={() => setEditingIdx(idx)}>
-                            {cfg.icon} {txLabel(item)}
-                          </span>
-                        )}
+                        <input type="text" value={item.referenceNumber}
+                          onChange={e => updateCart(idx, 'referenceNumber', e.target.value)}
+                          placeholder="WO-001…" className="so-cell-input so-cell-ref" />
                       </td>
 
-                      {/* Reference cell */}
+                      {/* NOTES — always editable */}
                       <td>
-                        {isEditing ? (
-                          <input type="text" value={item.referenceNumber}
-                            onChange={e => updateCart(idx, 'referenceNumber', e.target.value)}
-                            placeholder="WO-001…" className="so-inline-input" style={{ width: 100 }} />
-                        ) : (
-                          <span className="so-faded so-click-edit" onClick={() => setEditingIdx(idx)}>
-                            {item.referenceNumber || <span className="so-qty-hint">—</span>}
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Notes cell */}
-                      <td>
-                        {isEditing ? (
-                          <input type="text" value={item.notes}
-                            onChange={e => updateCart(idx, 'notes', e.target.value)}
-                            placeholder="Notes…" className="so-inline-input" style={{ width: 120 }} />
-                        ) : (
-                          <span className="so-faded so-click-edit" onClick={() => setEditingIdx(idx)}>
-                            {item.notes || <span className="so-qty-hint">—</span>}
-                          </span>
-                        )}
+                        <input type="text" value={item.notes}
+                          onChange={e => updateCart(idx, 'notes', e.target.value)}
+                          placeholder="Notes…" className="so-cell-input so-cell-notes" />
                       </td>
 
                       <td>
@@ -371,28 +394,17 @@ const CartPage = ({ cart, setCart, onBack, onSubmit, submitting, products }) => 
                           ? <span className="so-status-pill err">⚠ Exceeds</span>
                           : isReady
                             ? <span className="so-status-pill ok">✓ Ready</span>
-                            : <span className="so-status-pill empty">● Set details</span>}
+                            : <span className="so-status-pill empty">● Set qty</span>}
                       </td>
 
                       <td style={{ textAlign: 'center' }}>
-                        <div className="so-row-actions">
-                          {isEditing ? (
-                            <button className="so-action-btn done" onClick={() => setEditingIdx(null)} title="Done">
-                              <FiCheck size={12} />
-                            </button>
-                          ) : (
-                            <button className="so-action-btn edit" onClick={() => setEditingIdx(idx)} title="Edit">
-                              <FiEdit2 size={12} />
-                            </button>
-                          )}
-                          <button className="so-action-btn del" onClick={() => removeFromCart(idx)} title="Remove">
-                            <FiTrash2 size={12} />
-                          </button>
-                        </div>
+                        <button className="so-action-btn del" onClick={() => removeFromCart(idx)} title="Remove from cart">
+                          <FiTrash2 size={12} />
+                        </button>
                       </td>
                     </tr>
 
-                    {isEditing && stock?.lots?.length > 0 && (
+                    {isExpanded && stock?.lots?.length > 0 && (
                       <tr className="so-lot-row">
                         <td colSpan={15}>
                           <div className="so-lot-detail">
@@ -442,8 +454,7 @@ const CartPage = ({ cart, setCart, onBack, onSubmit, submitting, products }) => 
                 <tr className="so-cart-total-row">
                   <td colSpan={8} style={{ textAlign:'right', fontWeight:700, color:'#64748b', fontSize:12 }}>TOTALS</td>
                   <td><span style={{ font:'800 13px JetBrains Mono,monospace', color:'#4f46e5' }}>{fmt(totalQty, 0)} units</span></td>
-                  <td colSpan={2}></td>
-                  <td></td>
+                  <td colSpan={3}></td>
                   <td>
                     <span style={{ font:'800 13px JetBrains Mono,monospace', color:'#059669' }}>
                       {cart.some(i => i.unitPrice) ? `₹${fmtCur(cart.reduce((s,i) => s + (parseFloat(i.quantity||0) * parseFloat(i.unitPrice||0)), 0))}` : '—'}
@@ -583,31 +594,31 @@ const EditIssueModal = ({ issue, onConfirm, onCancel, loading }) => {
           </label>
           <input type="number" step="0.01" min="0.01" value={form.quantity}
             onChange={e => set('quantity', e.target.value)}
-            className={`so-inline-input ${isOver ? 'err' : ''}`} style={{ width: '100%' }} autoFocus />
+            className={`so-cell-input ${isOver ? 'err' : ''}`} style={{ width: '100%' }} autoFocus />
           {isOver && <span className="so-inline-err">Exceeds available stock ({fmt(effectiveMax)})</span>}
 
           <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', margin: '10px 0 4px' }}>Issue Type</label>
           <select value={form.transactionType} onChange={e => set('transactionType', e.target.value)}
-            className="so-inline-select" style={{ width: '100%' }}>
+            className="so-cell-select" style={{ width: '100%' }}>
             {Object.keys(TX_CFG).map(t => (
-              <option key={t} value={t}>{t === 'Semi_Finish' ? 'Semi-Finish' : t === 'Other' ? 'Custom…' : t}</option>
+              <option key={t} value={t}>{typeOption(t)}</option>
             ))}
           </select>
           {form.transactionType === 'Other' && (
             <input type="text" value={form.customType}
               onChange={e => set('customType', e.target.value)}
-              placeholder="Type custom type…"
-              className={`so-inline-input ${!form.customType?.trim() ? 'err' : ''}`}
+              placeholder="Custom type…"
+              className={`so-cell-input ${!form.customType?.trim() ? 'err' : ''}`}
               style={{ width: '100%', marginTop: 4 }} />
           )}
 
           <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', margin: '10px 0 4px' }}>Reference</label>
           <input type="text" value={form.referenceNumber} onChange={e => set('referenceNumber', e.target.value)}
-            placeholder="WO-001…" className="so-inline-input" style={{ width: '100%' }} />
+            placeholder="WO-001…" className="so-cell-input" style={{ width: '100%' }} />
 
           <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', margin: '10px 0 4px' }}>Notes</label>
           <input type="text" value={form.notes} onChange={e => set('notes', e.target.value)}
-            placeholder="Notes…" className="so-inline-input" style={{ width: '100%' }} />
+            placeholder="Notes…" className="so-cell-input" style={{ width: '100%' }} />
         </div>
 
         <div className="so-confirm-note"><FiAlertTriangle size={11} /> Original lots are restored, then FIFO re-runs with the new quantity</div>
@@ -673,7 +684,7 @@ const StockOut = () => {
   const filtered = useMemo(() => {
     let f = products;
     if (activeCategory !== 'all') f = f.filter(p => p.categoryName === activeCategory);
-    if (searchQuery.trim()) { const q = searchQuery.toLowerCase(); f = f.filter(p => [p.partNumber, p.description, p.categoryName, p.rackName].filter(Boolean).some(v => v.toLowerCase().includes(q))); }
+    if (searchQuery.trim()) { const q = searchQuery.toLowerCase(); f = f.filter(p => [p.partNumber, p.description, p.categoryName, p.rackName, p.supplierName].filter(Boolean).some(v => v.toLowerCase().includes(q))); }
     return f;
   }, [products, searchQuery, activeCategory]);
 
@@ -689,6 +700,7 @@ const StockOut = () => {
     setCart(prev => [...prev, {
       productId: product.productId, partNumber: product.partNumber || '—',
       description: product.description || '', categoryName: product.categoryName || '',
+      supplierName: product.supplierName || '',                       // ★ supplier now carried into the cart
       rackName: product.rackName || '', boxLabel: product.boxLabel || '',
       maxStock: parseFloat(product.totalStock || 0), unitPrice: product.unitPrice,
       quantity: '', transactionType: 'Production', customType: '', referenceNumber: '', notes: '',
@@ -723,6 +735,7 @@ const StockOut = () => {
           partNumber: item.partNumber,
           description: item.description,
           categoryName: item.categoryName,
+          supplierName: item.supplierName,                            // ★ carried through
           quantity: item.quantity,
           transactionType: item.transactionType,
           customType: item.customType,
@@ -776,13 +789,14 @@ const StockOut = () => {
     } finally { setActionLoading(false); }
   };
 
-  // Task 3 — carry the issued products into the Delivery Challan page
+  // carry the issued products into the Delivery Challan page
   const createChallan = () => {
     const items = recentIssues.filter(r => !r.reversed).map(r => ({
       productId: r.productId,
       partNumber: r.partNumber,
       description: r.description,
       categoryName: r.categoryName,
+      supplierName: r.supplierName || null,                           // ★ supplier goes to the challan too
       quantity: r.quantity,
       unitPrice: r.unitPrice,
       referenceNumber: r.referenceNumber,
@@ -794,7 +808,7 @@ const StockOut = () => {
   // open a blank Delivery Challan (header button)
   const openChallan = () => navigate(CHALLAN_ROUTE);
 
-  // ★ NEW — send a single product straight to the Delivery Challan page (per-row DC button)
+  // send a single product straight to the Delivery Challan page (per-row DC button)
   const sendToChallan = (product) => {
     const items = [{
       productId: product.productId,
@@ -814,7 +828,8 @@ const StockOut = () => {
 
   if (view === 'cart') return (
     <>
-      <CartPage cart={cart} setCart={setCart} onBack={() => setView('products')} onSubmit={() => setShowConfirm(true)} submitting={submitting} products={products} />
+      <CartPage cart={cart} setCart={setCart} onBack={() => setView('products')} onSubmit={() => setShowConfirm(true)} submitting={submitting}
+        products={products} onAddProduct={addToCart} />
       {showConfirm && <ConfirmModal cart={cart} onConfirm={confirmSubmit} onCancel={() => setShowConfirm(false)} loading={submitting} />}
     </>
   );
@@ -864,7 +879,7 @@ const StockOut = () => {
         </div>
       )}
 
-      {/* Recently issued — edit / cancel + create challan (Task 3) */}
+      {/* Recently issued — edit / cancel + create challan */}
       {recentIssues.length > 0 && (
         <div className="so-draft-banner so-animate-in" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -956,7 +971,7 @@ const StockOut = () => {
       <div className="so-card so-animate-in" style={{ animationDelay:'100ms' }}>
         <div className="so-card-search">
           <FiSearch size={14} className="so-search-icon" />
-          <input className="so-search-input" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search part number, description, category…" />
+          <input className="so-search-input" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search part number, description, category, supplier…" />
           {searchQuery && <button className="so-search-clear" onClick={() => setSearchQuery('')}><FiX size={12} /></button>}
         </div>
         <div className="so-cat-pills">
@@ -986,7 +1001,7 @@ const StockOut = () => {
             <table className="so-table">
               <thead>
                 <tr>
-                  <th>#</th><th>PART NO.</th><th>DESCRIPTION</th><th>CATEGORY</th>
+                  <th>#</th><th>PART NO.</th><th>DESCRIPTION</th><th>SUPPLIER</th><th>CATEGORY</th>
                   <th>LOCATION</th><th>STOCK</th><th>UNIT PRICE</th><th>STATUS</th>
                   <th style={{ textAlign:'center' }}>ADD TO CART</th>
                 </tr>
@@ -1000,6 +1015,11 @@ const StockOut = () => {
                       <td className="so-num">{(safePage-1)*PAGE_SIZE+idx+1}</td>
                       <td><span className="so-mono"><HL text={p.partNumber||'—'} q={searchQuery}/></span></td>
                       <td><span className="so-truncate" title={p.description}><HL text={p.description||'—'} q={searchQuery}/></span></td>
+                      <td>
+                        {p.supplierName
+                          ? <span className="so-supplier"><FiTruck size={10} /> <HL text={p.supplierName} q={searchQuery}/></span>
+                          : <span className="so-faded">—</span>}
+                      </td>
                       <td>{p.categoryName?<span className="so-chip"><HL text={p.categoryName} q={searchQuery}/></span>:<span className="so-faded">—</span>}</td>
                       <td className="so-faded" style={{ fontSize:11 }}>{p.rackName?<span style={{display:'flex',alignItems:'center',gap:3}}><FiMapPin size={10}/>{p.rackName}{p.boxLabel?`/${p.boxLabel}`:''}</span>:'—'}</td>
                       <td><span className={`so-stock-val ${isLow?'low':'ok'}`}>{fmt(p.totalStock,0)}{isLow&&<span className="so-low-tag">LOW</span>}</span></td>

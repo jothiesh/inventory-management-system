@@ -98,12 +98,12 @@
 }
 
 .history-table thead th {
-  background: #f8fafc;
+  background: #151E31;
   padding: 12px 16px;
   text-align: left;
   font-weight: 600;
-  color: #374151;
-  border-bottom: 2px solid #e5e7eb;
+  color: #DCDBD5;
+  border-bottom: 2px solid #151E31;
   white-space: nowrap;
 }
 

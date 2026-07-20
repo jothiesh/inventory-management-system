@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
@@ -8,7 +8,9 @@ import {
   FiAlertTriangle, FiPackage, FiUser, FiCalendar,
   FiFileText, FiClipboard, FiList, FiGrid, FiCheck,
   FiInfo, FiDownload, FiEye, FiX, FiChevronDown, FiEdit2,
+  FiRefreshCw,
 } from 'react-icons/fi';
+import { snapshotHtml, openPrintWindow, safeName } from './qcChecklistPrint';
 import './QcInspection.css';
 
 const token = () => localStorage.getItem('token');
@@ -25,89 +27,25 @@ const DECISIONS = {
 };
 
 const INSPECTOR_LS_KEY = 'qcInspectorName';
-const safeName = (s) => String(s || '').trim().replace(/[^\w\-.]+/g, '_') || 'NA';
 
-// ── Checklist per-row dialog ───────────────────────────────────
-// ★ TASK 1: each stage now has a tick — only ticked stages are
-//   applicable / counted / submitted. Unticked rows are dimmed.
-const ChecklistDialog = ({ lot, stages, results, selStages, onToggleStage,
-                           onSelectAll, onChange, onClose }) => {
-  const selectedList = stages.filter(s => selStages.has(s.id));
-  const filledCount  = selectedList.filter(s => results[`${lot.lotId}-${s.id}`]?.result).length;
 
-  return (
-    <div className="qci-dialog-overlay" onClick={e => { if (e.target===e.currentTarget) onClose(); }}>
-      <div className="qci-dialog">
-        <div className="qci-dialog-head">
-          <div>
-            <div className="qci-dialog-title">{lot.partNumber||'Item'} — Checklist</div>
-            <div className="qci-dialog-sub">{lot.description} · tick only the checkpoints that apply</div>
-          </div>
-          <button className="qci-dialog-close" onClick={onClose}><FiX size={16}/></button>
-        </div>
-        <div className="qci-dialog-body">
-          {stages.map((stage, idx) => {
-            const key      = `${lot.lotId}-${stage.id}`;
-            const current  = results[key]?.result;
-            const selected = selStages.has(stage.id);
-            return (
-              <div key={stage.id} className={`qci-dialog-stage ${selected ? '' : 'qci-stage-off'}`}>
-                {/* ★ TASK 1 — applicability tick */}
-                <label className="qci-stage-select" title={selected ? 'Included in inspection' : 'Excluded — tick to include'}>
-                  <input type="checkbox" checked={selected}
-                    onChange={() => onToggleStage(stage.id)}/>
-                </label>
-                <div className="qci-dialog-stage-num">{stage.slNo || idx+1}</div>
-                <div className="qci-dialog-stage-info">
-                  {stage.stageOperation && (
-                    <span className="qci-dialog-op">{stage.stageOperation}</span>
-                  )}
-                  <div className="qci-dialog-stage-name">{stage.checkPoint}</div>
-                  {stage.aqlLabel && <span className="qci-dialog-aql">AQL: {stage.aqlLabel}</span>}
-                </div>
-                <div className="qci-dialog-btns">
-                  {[{k:'PASS',l:'Pass',c:'#10b981'},{k:'FAIL',l:'Fail',c:'#ef4444'},{k:'NA',l:'N/A',c:'#94a3b8'}].map(({k,l,c})=>(
-                    <button key={k} disabled={!selected}
-                      className={`qci-dialog-btn ${current===k?'active':''}`}
-                      style={current===k?{background:c,borderColor:c,color:'#fff'}:{color:c,borderColor:c}}
-                      onClick={()=>onChange(key,'result',k)}>{l}</button>
-                  ))}
-                </div>
-                <input className="qci-dialog-remark" placeholder="Remarks…" disabled={!selected}
-                  value={results[key]?.remarks||''}
-                  onChange={e=>onChange(key,'remarks',e.target.value)}/>
-              </div>
-            );
-          })}
-        </div>
-        <div className="qci-dialog-foot">
-          <span className="qci-dialog-progress">
-            {filledCount} / {selectedList.length} selected filled
-            <span className="qci-dialog-sel-info"> · {selectedList.length} of {stages.length} checkpoints selected</span>
-          </span>
-          <div className="qci-dialog-foot-actions">
-            <button className="qci-sel-link" onClick={()=>onSelectAll(true)}>Select All</button>
-            <button className="qci-sel-link" onClick={()=>onSelectAll(false)}>None</button>
-            <button className="qci-btn-primary" onClick={onClose}>Done</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ── Template Live Preview ──────────────────────────────────────
-// ★ TASK 4: shows LIVE values — Pass/Fail ticked from the checklist
-//   answers, remarks filled, Verified By = inspector name, and the
-//   Lot decision box ticked automatically.
-const TemplatePreview = ({ template, batch, selStages, getStageResult,
-                           inspectorName, liveDecision,
-                           inspQty, onInspQty, lotQtyDisplay }) => {
-  if (!template) return null;
+// ── Template Live Preview (fully inline-editable) ──────────────
+// Qty + Pass/Fail/NA + Remarks are all edited directly here.
+const TemplatePreview = ({ template, batch, lot, selStages, getStageResult,
+                           inspectorName, liveDecision, onDecisionTick,
+                           inspQty, onInspQty,
+                           onStageResult, onStageRemarks, onDownloadFilled }) => {
+  if (!template || !lot) return null;
   const stages = template.stages || [];
   const padCount = Math.max(0, 6 - stages.length);
 
   const tick = (checked) => checked ? '☑' : '☐';
+
+  // ★ every editable cell is namespaced by lot — switching tabs never
+  //   overwrites what was typed on another lot's form.
+  const lotId  = lot.lotId;
+  const k      = (stageId) => `${lotId}-${stageId}`;
+  const lotQty = parseFloat(lot.qtyReceived || lot.quantity || lot.receivedQty || 0);
 
   return (
     <div className="qci-preview-doc">
@@ -129,53 +67,85 @@ const TemplatePreview = ({ template, batch, selStages, getStageResult,
         <div className="qci-preview-meta-row">
           <span>Invoice No:</span><strong>{batch?.invoiceNo||batch?.invoiceNumber||'___________'}</strong>
           <span>Received Date:</span><strong>{fmtDate(batch?.receivedDate)}</strong>
-          {/* ★ TASK 2: individual item quantities (e.g. 500 + 400), not the batch total */}
-          <span>Lot Qty:</span><strong>{lotQtyDisplay || batch?.totalQty || batch?.totalQuantity || '____'}</strong>
+          <span>Lot Qty:</span><strong>{lotQty ? lotQty.toFixed(0) : '____'}</strong>
         </div>
         <div className="qci-preview-meta-row">
           <span>Supplier Name:</span><strong>{batch?.supplierName||'_____________________________'}</strong>
           <span>Batch Ref:</span><strong>{batch?.batchRef||'____________'}</strong>
         </div>
+        <div className="qci-preview-meta-row">
+          <span>Material Desc:</span>
+          <strong className="qci-preview-matdesc">
+            {lot.description || lot.partNumber || '_____________________________'}
+          </strong>
+          <span>Part No:</span><strong>{lot.partNumber||'____________'}</strong>
+        </div>
       </div>
       <table className="qci-preview-table">
         <thead><tr>
           <th style={{width:'6%'}}>Sl No</th>
-          <th style={{width:'20%'}}>Stage / Operation</th>
-          <th style={{width:'32%'}}>Check Points</th>
-          <th style={{width:'12%'}}>Inspected Qty (AQL)</th>
-          <th style={{width:'16%'}}>Remarks</th>
-          <th style={{width:'14%'}}>Pass/Fail/NA</th>
+          <th style={{width:'18%'}}>Stage / Operation</th>
+          <th style={{width:'26%'}}>Check Points</th>
+          <th style={{width:'11%'}}>Inspected Qty (AQL)</th>
+          <th style={{width:'17%'}}>Remarks</th>
+          <th style={{width:'22%'}}>Pass/Fail/NA</th>
         </tr></thead>
         <tbody>
           {stages.map((s, i) => {
             const selected = selStages.has(s.id);
-            const live     = selected ? getStageResult(s.id) : { result:null, remarks:'' };
+            const live     = selected ? getStageResult(lotId, s.id) : { result:null, remarks:'' };
             const res      = live.result;
             return (
               <tr key={s.id||i} className={selected ? '' : 'qci-preview-row-off'}>
                 <td style={{textAlign:'center'}}>{s.slNo||i+1}</td>
                 <td>{s.stageOperation||''}</td>
                 <td>{s.checkPoint||''}</td>
-                {/* ★ TASK 1: Inspected Qty is now EDITABLE directly in the preview */}
+
+                {/* Inspected Qty — editable */}
                 <td style={{textAlign:'center'}}>
                   {selected
                     ? <input
                         className="qci-preview-qty-input"
-                        value={inspQty?.[s.id] ?? ''}
-                        onChange={e => onInspQty && onInspQty(s.id, e.target.value)}
+                        value={inspQty?.[k(s.id)] ?? ''}
+                        onChange={e => onInspQty && onInspQty(lotId, s.id, e.target.value)}
                         placeholder={s.aqlLabel || 'Qty'}
                         title="Inspected Qty (AQL) — editable"
                       />
                     : '—'}
                 </td>
-                <td className="qci-preview-remarks-cell">{selected ? (live.remarks||'') : 'Not Applicable'}</td>
-                <td style={{textAlign:'center',fontSize:9}}>
+
+                {/* Remarks — editable */}
+                <td className="qci-preview-remarks-cell">
                   {selected
-                    ? <>
-                        <span className={res==='PASS'?'qci-tick-pass':''}>{tick(res==='PASS')} Pass</span>{' '}
-                        <span className={res==='FAIL'?'qci-tick-fail':''}>{tick(res==='FAIL')} Fail</span>{' '}
-                        <span className={res==='NA'?'qci-tick-na':''}>{tick(res==='NA')} N/A</span>
-                      </>
+                    ? <input
+                        className="qci-preview-remark-input"
+                        value={live.remarks || ''}
+                        onChange={e => onStageRemarks(lotId, s.id, e.target.value)}
+                        placeholder="Remarks…"
+                      />
+                    : 'Not Applicable'}
+                </td>
+
+                {/* Pass/Fail/NA — editable buttons */}
+                <td style={{textAlign:'center'}}>
+                  {selected
+                    ? <div className="qci-preview-pfn">
+                        {[
+                          {code:'PASS', l:'Pass', c:'#10b981'},
+                          {code:'FAIL', l:'Fail', c:'#ef4444'},
+                          {code:'NA',   l:'N/A',  c:'#94a3b8'},
+                        ].map(({code,l,c}) => (
+                          <button
+                            key={code}
+                            type="button"
+                            className={`qci-preview-pfn-btn ${res===code ? 'active' : ''}`}
+                            style={res===code ? {background:c, borderColor:c, color:'#fff'} : {color:c, borderColor:c}}
+                            onClick={() => onStageResult(lotId, s.id, code)}
+                          >
+                            {tick(res===code)} {l}
+                          </button>
+                        ))}
+                      </div>
                     : '—'}
                 </td>
               </tr>
@@ -188,16 +158,40 @@ const TemplatePreview = ({ template, batch, selStages, getStageResult,
       </table>
       <div className="qci-preview-footer">
         <div className="qci-preview-sign">
-          <div className="qci-preview-sign-name">{inspectorName||''}</div>
+          <div className="qci-preview-sign-name-row">
+            <div className="qci-preview-sign-name">{inspectorName||''}</div>
+            {onDownloadFilled && (
+              <button type="button" className="qci-preview-dl-btn"
+                onClick={() => onDownloadFilled(lotId)}
+                title="Download this lot's filled checklist">
+                <FiDownload size={11}/> Download this lot
+              </button>
+            )}
+          </div>
           <div className="qci-preview-sign-line"/>
           <div>Verified By (Name &amp; Signature)</div>
         </div>
         <div className="qci-preview-decision">
           Lot is&nbsp;
-          <span className={liveDecision==='ACCEPTED'?'qci-tick-pass':''}>{tick(liveDecision==='ACCEPTED')} Accepted</span>&nbsp;
-          <span className={liveDecision==='REJECTED'?'qci-tick-fail':''}>{tick(liveDecision==='REJECTED')} Rejected</span>&nbsp;
-          <span className={liveDecision==='HOLD'?'qci-tick-hold':''}>{tick(liveDecision==='HOLD')} Hold</span>&nbsp;
-          <span className={liveDecision==='PARTIAL'?'qci-tick-hold':''}>{tick(liveDecision==='PARTIAL')} Partial</span>
+          {[
+            { code: 'ACCEPTED', l: 'Accepted', cls: 'qci-tick-pass' },
+            { code: 'REJECTED', l: 'Rejected', cls: 'qci-tick-fail' },
+            { code: 'HOLD',     l: 'Hold',     cls: 'qci-tick-hold' },
+            { code: 'PARTIAL',  l: 'Partial',  cls: 'qci-tick-hold' },
+          ].map(({ code, l, cls }) => {
+            const on = liveDecision === code;
+            return (
+              <button
+                key={code}
+                type="button"
+                className={`qci-preview-lot-tick ${on ? `active ${cls}` : ''}`}
+                onClick={() => onDecisionTick && onDecisionTick(lotId, code)}
+                title={on ? 'Click again to clear' : `Tick lot as ${l}`}
+              >
+                <span className="qci-lot-tick-box">{tick(on)}</span> {l}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -225,42 +219,52 @@ const QcInspection = () => {
   // Checklist results key=`${lotId}-${stageId}` → { result, remarks }
   const [clResults,     setClResults]     = useState({});
 
-  // ★ TASK 1: Inspected Qty (AQL) — editable per checkpoint in the preview
+  // Inspected Qty (AQL) — editable per checkpoint in the preview
   const [inspQty,       setInspQty]       = useState({});
-  const setStageInspQty = (stageId, v) => setInspQty(prev => ({ ...prev, [stageId]: v }));
+  const setStageInspQty = (lotId, stageId, v) =>
+    setInspQty(prev => ({ ...prev, [`${lotId}-${stageId}`]: v }));
 
-  // ★ TASK 3: inspector name — editable + remembered (localStorage)
+  // inspector name — editable + remembered (localStorage)
   const [inspectorName, setInspectorName] = useState(
     () => localStorage.getItem(INSPECTOR_LS_KEY) || 'QC Inspector'
   );
   const [editingName,   setEditingName]   = useState(false);
 
-  // ★ TASK 1: which checkpoints are applicable (Set of stage ids)
+  // which checkpoints are applicable (Set of stage ids)
   const [selStages,     setSelStages]     = useState(new Set());
 
-  // ★ NEW: which batch ITEMS are selected for this submission.
-  //   Unticked items are NOT decided — they stay in the QC waiting
-  //   list (batch remains PENDING_QC with the remaining items).
+  // which batch ITEMS are selected for this submission.
   const [selLots,       setSelLots]       = useState(new Set());
+
+  // ★ Manual tick on each lot's "Lot is …" row, keyed by lotId.
+  //   Absent = follow that lot's auto-computed decision. Clicking the same
+  //   box again clears the override. Display / print only.
+  const [lotTicks,      setLotTicks]      = useState({});
+  const toggleLotTick = (lotId, d) =>
+    setLotTicks(prev => ({ ...prev, [lotId]: prev[lotId] === d ? null : d }));
+
+  // ★ which lot's checklist is on screen (one form per lot)
+  const [activeLotId,   setActiveLotId]   = useState(null);
+
+  // ★ when the checklist was last persisted (set by save-on-download)
+  const [draftSavedAt,  setDraftSavedAt]  = useState(null);
 
   // Template
   const [allTemplates,  setAllTemplates]  = useState([]);
   const [selTemplate,   setSelTemplate]   = useState(null);
-  const [showPreview,   setShowPreview]   = useState(false);
+  const [showPreview,   setShowPreview]   = useState(true);
   const [loadingTpl,    setLoadingTpl]    = useState(false);
 
-  // Dialog
-  const [dialogLot,     setDialogLot]     = useState(null);
+  // ★ ref to the live preview (for filled-checklist download)
+  const previewRef = useRef(null);
 
   useEffect(() => {
-    // only override with logged-in user name if nothing was saved before
     if (!localStorage.getItem(INSPECTOR_LS_KEY)) {
       if (user?.fullName)      setInspectorName(user.fullName);
       else if (user?.username) setInspectorName(user.username);
     }
   }, [user]);
 
-  // persist inspector name so "Sowmya Shree" stays for next batches
   const saveInspectorName = (name) => {
     setInspectorName(name);
     localStorage.setItem(INSPECTOR_LS_KEY, name);
@@ -281,8 +285,8 @@ const QcInspection = () => {
         init[lot.lotId] = { accepted: received, rejected: 0, held: 0, remarks: '' };
       });
       setPerItem(init);
-      // ★ default: all items ticked
       setSelLots(new Set(items.map(l => l.lotId)));
+      setActiveLotId(items[0]?.lotId ?? null);   // ★ open the first lot's form
     } catch { toast.error('Failed to load batch'); setBatch(null); }
     finally { setLoading(false); }
   };
@@ -310,7 +314,7 @@ const QcInspection = () => {
 
   const stages = useMemo(() => selTemplate?.stages || [], [selTemplate]);
 
-  // ★ TASK 1: when template changes, default = all stages selected
+  // when template changes, default = all stages selected
   useEffect(() => {
     setSelStages(new Set(stages.map(s => s.id)));
   }, [selTemplate]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -326,7 +330,7 @@ const QcInspection = () => {
   const selectAllStages = (all) =>
     setSelStages(all ? new Set(stages.map(s => s.id)) : new Set());
 
-  // ★ NEW: item (lot) selection helpers
+  // item (lot) selection helpers
   const lots = batch?.lots || batch?.items || [];
   const toggleLot = (lotId) => {
     setSelLots(prev => {
@@ -339,8 +343,59 @@ const QcInspection = () => {
   const selectAllLots = (all) =>
     setSelLots(all ? new Set(lots.map(l => l.lotId)) : new Set());
 
-  const handleClChange = (key, field, value) =>
-    setClResults(prev => ({ ...prev, [key]: { ...prev[key], [field]: value } }));
+  // ★ Rehydrate a previously saved draft.
+  //   If the inspector downloaded, walked away, and came back, the form comes
+  //   back filled instead of blank. Runs once per batch, after the templates
+  //   have loaded so the saved templateCode can select the right one.
+  const draftLoaded = useRef(false);
+  useEffect(() => {
+    if (draftLoaded.current) return;
+    if (!id || !allTemplates.length) return;
+    draftLoaded.current = true;
+
+    (async () => {
+      try {
+        const res   = await api(`/api/qc/checklists/draft/${id}`);
+        const draft = res.data?.data || null;
+        if (!draft || !draft.results?.length) return;
+
+        const tpl = allTemplates.find(t =>
+          String(t.categoryCode || '').toUpperCase() ===
+          String(draft.templateCode || '').toUpperCase());
+        if (tpl) setSelTemplate(tpl);
+
+        const res2 = {}, qty2 = {};
+        draft.results.forEach(r => {
+          if (!r.stageId) return;
+          const key = `${r.lotId}-${r.stageId}`;
+          res2[key] = { result: r.result || null, remarks: r.remarks || '' };
+          if (r.inspectedQty != null) qty2[key] = r.inspectedQty;
+        });
+        setClResults(res2);
+        setInspQty(qty2);
+        setDraftSavedAt(new Date(draft.updatedAt || Date.now()));
+        toast.info('Restored your saved checklist', { autoClose: 2000 });
+      } catch {
+        /* no draft for this batch — normal on a first visit */
+      }
+    })();
+  }, [id, allTemplates]);
+
+  // ── Inline preview editors write ONE result per (lot, stage) ──
+  //    Key was `global-${stageId}` — a single shared row for the whole batch.
+  //    Now every lot carries its own form data.
+  const ck = (lotId, stageId) => `${lotId}-${stageId}`;
+
+  const setStageResult = (lotId, stageId, result) =>
+    setClResults(prev => ({
+      ...prev,
+      [ck(lotId, stageId)]: { ...prev[ck(lotId, stageId)], result },
+    }));
+  const setStageRemarks = (lotId, stageId, remarks) =>
+    setClResults(prev => ({
+      ...prev,
+      [ck(lotId, stageId)]: { ...prev[ck(lotId, stageId)], remarks },
+    }));
 
   const updatePerItem = (lotId, field, value) =>
     setPerItem(prev => ({ ...prev, [lotId]: { ...prev[lotId], [field]: value } }));
@@ -349,66 +404,59 @@ const QcInspection = () => {
   const totalLots   = lots.length;
   const totalQty    = lots.reduce((s,l)=>s+parseFloat(l.qtyReceived||l.quantity||l.receivedQty||0),0);
 
-  // ★ per-item totals are over SELECTED items only
   const selLotsArr  = lots.filter(l => selLots.has(l.lotId));
   const selReceived = selLotsArr.reduce((s,l)=>s+parseFloat(l.qtyReceived||l.quantity||l.receivedQty||0),0);
   const totAccepted = selLotsArr.reduce((s,l)=>s+parseFloat(perItem[l.lotId]?.accepted||0),0);
   const totRejected = selLotsArr.reduce((s,l)=>s+parseFloat(perItem[l.lotId]?.rejected||0),0);
   const totHeld     = selLotsArr.reduce((s,l)=>s+parseFloat(perItem[l.lotId]?.held||0),0);
 
-  // ★ BUG FIX + TASK 4: merge per-lot checklist answers into one
-  //   result per stage. FAIL wins over PASS wins over NA.
-  const getStageResult = (stageId) => {
-    let result = null, remarks = '';
-    const consider = (r) => {
-      if (!r) return;
-      if (r.result) {
-        if (r.result === 'FAIL') result = 'FAIL';
-        else if (r.result === 'PASS' && result !== 'FAIL') result = 'PASS';
-        else if (r.result === 'NA' && !result) result = 'NA';
-      }
-      if (r.remarks) remarks = remarks ? `${remarks}; ${r.remarks}` : r.remarks;
-    };
-    lots.forEach(l => consider(clResults[`${l.lotId}-${stageId}`]));
-    consider(clResults[`global-${stageId}`]); // backward compat
-    return { result, remarks };
+  // one result per (lot, stage)
+  const getStageResult = (lotId, stageId) => {
+    const r = clResults[ck(lotId, stageId)];
+    return { result: r?.result || null, remarks: r?.remarks || '' };
   };
 
-  // Only selected stages carry real results; unselected go as NA
-  // ★ TASK 1: inspectedQty included in the checklist payload
-  const buildChecklist = () => stages.map(s => {
-    if (!selStages.has(s.id)) {
-      return { stageId: s.id, result: 'NA', remarks: 'Not applicable', inspectedQty: null };
-    }
-    const live = getStageResult(s.id);
-    return {
-      stageId:      s.id,
-      result:       live.result  || 'NA',
-      remarks:      live.remarks || null,
-      inspectedQty: (inspQty[s.id] ?? '').toString().trim() || null,
-    };
-  });
+  // ★ One row per (lot, stage). Unselected stages go as NA.
+  //   NOTE: the backend has no field for this yet — see notes.
+  const buildChecklist = () => {
+    const target = mode === 'per-item' && selLotsArr.length ? selLotsArr : lots;
+    const out = [];
+    target.forEach(lot => {
+      stages.forEach(s => {
+        if (!selStages.has(s.id)) {
+          out.push({ lotId: lot.lotId, stageId: s.id, result: 'NA',
+                     remarks: 'Not applicable', inspectedQty: null });
+          return;
+        }
+        const live = getStageResult(lot.lotId, s.id);
+        out.push({
+          lotId:        lot.lotId,
+          stageId:      s.id,
+          result:       live.result  || 'NA',
+          remarks:      live.remarks || null,
+          inspectedQty: (inspQty[ck(lot.lotId, s.id)] ?? '').toString().trim() || null,
+        });
+      });
+    });
+    return out;
+  };
 
-  // ★ TASK 2: individual lot quantities for the preview header —
-  //   per-item mode with ticked rows → "500 + 400"; otherwise all lots.
-  const lotQtyDisplay = useMemo(() => {
-    const qtyOf = (l) => parseFloat(l.qtyReceived || l.quantity || l.receivedQty || 0);
-    const src = (mode === 'per-item' && selLotsArr.length > 0) ? selLotsArr : lots;
-    if (!src.length) return String(batch?.totalQty || batch?.totalQuantity || '____');
-    if (src.length === 1) return qtyOf(src[0]).toFixed(0);
-    return src.map(l => qtyOf(l).toFixed(0)).join(' + ');
-  }, [mode, selLotsArr, lots, batch]);
-
-  // ★ TASK 4: live overall decision for the preview footer
-  const liveDecision = useMemo(() => {
+  // ★ Each lot's own decision. In bulk mode every form shows the bulk pick;
+  //   in per-item mode each form reflects that lot's own qty split.
+  const autoLotDecision = (lot) => {
     if (mode === 'bulk') return bulkDecision || '';
-    const a = totAccepted, r = totRejected, h = totHeld;
+    const d = perItem[lot.lotId] || {};
+    const a = parseFloat(d.accepted || 0);
+    const r = parseFloat(d.rejected || 0);
+    const h = parseFloat(d.held     || 0);
     if (a > 0 && r === 0 && h === 0) return 'ACCEPTED';
     if (r > 0 && a === 0 && h === 0) return 'REJECTED';
     if (h > 0 && a === 0 && r === 0) return 'HOLD';
     if (a + r + h > 0)               return 'PARTIAL';
     return '';
-  }, [mode, bulkDecision, totAccepted, totRejected, totHeld]);
+  };
+  // manual tick wins; otherwise fall back to that lot's auto decision
+  const shownDecisionFor = (lot) => lotTicks[lot.lotId] ?? autoLotDecision(lot);
 
   const downloadTemplate = async (type) => {
     if (!selTemplate) return;
@@ -422,13 +470,100 @@ const QcInspection = () => {
     } catch { toast.error('Download failed'); }
   };
 
-  // ★ NEW: auto-download the generated inspection PDF, named with
-  //   invoice no (or batch ref) + inspector name.
-  const autoDownloadPdf = async (respData) => {
-    const pdfUrl = respData?.pdfDownloadUrl;
-    if (!pdfUrl) return;
+  // ══ FILLED-CHECKLIST DOWNLOAD ═══════════════════════════════
+  // Every lot's form is mounted (inactive ones hidden), so any lot can be
+  // printed without switching tabs first.
+
+  // Snapshot one lot's live form as static, printable HTML.
+  const paneHtml = (lotId) => {
+    const pane = previewRef.current?.querySelector(`[data-lotid="${lotId}"]`);
+    return snapshotHtml(pane?.querySelector('.qci-preview-doc'));
+  };
+
+  const docTitle = (suffix) => {
+    const invoice = (batch?.invoiceNo && batch.invoiceNo !== '—')
+      ? batch.invoiceNo : (batch?.batchRef || `Batch-${id}`);
+    return `QC_${safeName(invoice)}_${safeName(inspectorName)}${suffix ? '_' + safeName(suffix) : ''}`;
+  };
+
+  const printOrWarn = (title, html) => {
+    if (!openPrintWindow(title, html)) toast.error('Popup blocked — allow popups to download');
+  };
+
+  // ★ SAVE-ON-DOWNLOAD
+  //   Clicking Download persists the filled checklist — no separate Save
+  //   button. There is no inspection row yet at this point, so the backend
+  //   stores it as a draft keyed by batchId and claims it on submit.
+  //   Re-downloading upserts the same draft rather than piling up rows.
+  //   Fire-and-forget: a failed save must never block the download itself.
+  const saveChecklistDraft = async () => {
+    if (!selTemplate) return;
     try {
-      const res = await api(pdfUrl, { responseType: 'blob' });
+      await api('/api/qc/checklists/draft', {
+        method: 'POST',
+        data: {
+          batchId:      parseInt(id),
+          templateCode: selTemplate.categoryCode,
+          results:      buildChecklist(),
+        },
+      });
+      setDraftSavedAt(new Date());
+    } catch (err) {
+      // The inspector still gets their document; only persistence failed.
+      console.warn('Checklist draft save failed', err);
+      toast.warn('Checklist downloaded, but could not be saved', { autoClose: 2500 });
+    }
+  };
+
+  // ── 1. THIS LOT — one form, one page ──
+  const downloadLot = (lotId) => {
+    const html = paneHtml(lotId);
+    if (!html) { toast.error('Open the checklist preview first'); return; }
+    const lot = lots.find(l => l.lotId === lotId);
+    printOrWarn(docTitle(lot?.partNumber || `Lot-${lotId}`), html);
+    saveChecklistDraft();   // ★ downloading saves
+  };
+
+  // ── 2. ALL LOTS — one file, page break between each ──
+  const downloadAllCombined = () => {
+    const parts = lots.map(l => paneHtml(l.lotId)).filter(Boolean);
+    if (!parts.length) { toast.error('Open the checklist preview first'); return; }
+    const body = parts
+      .map((h, i) => `<div class="${i < parts.length - 1 ? 'qci-page-break' : ''}">${h}</div>`)
+      .join('');
+    printOrWarn(docTitle(`All-${parts.length}-lots`), body);
+    saveChecklistDraft();   // ★ downloading saves
+  };
+
+  // ── 3. ONE BY ONE — a separate file per lot ──
+  const downloadEachSeparately = () => {
+    if (!lots.length) { toast.error('Open the checklist preview first'); return; }
+    lots.forEach((l, i) => {
+      // stagger — browsers throttle popups fired in the same tick
+      setTimeout(() => {
+        const html = paneHtml(l.lotId);
+        if (html) printOrWarn(docTitle(l.partNumber || `Lot-${l.lotId}`), html);
+      }, i * 700);
+    });
+    saveChecklistDraft();   // ★ one save covers every lot — not N posts
+    toast.info(`Opening ${lots.length} checklists — allow popups if blocked`, { autoClose: 3000 });
+  };
+
+  const autoDownloadPdf = async (respData) => {
+    // Backend returns the created inspection id; the PDF endpoint is keyed by that id
+    // (GET /api/qc/inspections/{inspectionId}/pdf). It does NOT return a ready-made URL.
+    const inspectionId =
+      respData?.inspectionId ??
+      respData?.id ??
+      respData?.inspection?.id ??
+      (Array.isArray(respData?.inspectionIds) ? respData.inspectionIds[0] : null);
+
+    if (!inspectionId) {
+      toast.warn('Decision saved, but no inspection id was returned — open the PDF from History');
+      return;
+    }
+    try {
+      const res = await api(`/api/qc/inspections/${inspectionId}/pdf`, { responseType: 'blob' });
       const invoice = (batch?.invoiceNo && batch.invoiceNo !== '—')
         ? batch.invoiceNo
         : (batch?.batchRef || `Batch-${id}`);
@@ -441,13 +576,6 @@ const QcInspection = () => {
     } catch { toast.warn('Decision saved, but PDF download failed — open it from History'); }
   };
 
-  const stageCount = (lotId) => {
-    const selected = stages.filter(s => selStages.has(s.id));
-    if (!selected.length) return stages.length ? '0 sel' : null;
-    const done = selected.filter(s=>clResults[`${lotId}-${s.id}`]?.result).length;
-    return `${done}/${selected.length}`;
-  };
-
   // ── SUBMIT ────────────────────────────────────────────────────
   const handleBulkSubmit = async (pdf=false) => {
     if (!bulkDecision) { toast.error('Select a decision first'); return; }
@@ -456,8 +584,15 @@ const QcInspection = () => {
       setSubmitting(true);
       const res = await api('/api/qc/decisions/bulk', {
         method:'POST',
-        data: { batchId:parseInt(id), decision:bulkDecision, remarks:bulkRemarks||null,
-                inspectorName:inspectorName||null, checklistResults:buildChecklist() },
+        // ★ overallRemarks — the backend reads getOverallRemarks(); this used
+        //   to be sent as `remarks`, so every bulk remark was silently dropped.
+        // ★ templateCode — never sent before, which is why insp.templateCode
+        //   stayed null and every generated PDF printed a blank checklist.
+        data: { batchId:parseInt(id), decision:bulkDecision,
+                overallRemarks:bulkRemarks||null,
+                templateCode:selTemplate?.categoryCode||null,
+                inspectorName:inspectorName||null,
+                checklistResults:buildChecklist() },
         params: pdf ? { generatePdf:true } : {}
       });
       toast.success('QC decision recorded!');
@@ -468,7 +603,6 @@ const QcInspection = () => {
   };
 
   const handlePerItemSubmit = async (pdf=false) => {
-    // ★ only SELECTED items are validated and submitted
     if (selLotsArr.length === 0) { toast.error('Tick at least one item to submit'); return; }
     const errs = [];
     selLotsArr.forEach((lot) => {
@@ -491,9 +625,9 @@ const QcInspection = () => {
       const res = await api('/api/qc/decisions/per-item', {
         method:'POST',
         data: {
-          batchId:parseInt(id), inspectorName:inspectorName||null, checklistResults:buildChecklist(),
-          // ★ FIX: backend DTO field is `items` (req.getItems()) — was `itemDecisions`,
-          //   which deserialized to an empty list → "At least one item decision is required"
+          batchId:parseInt(id), inspectorName:inspectorName||null,
+          templateCode:selTemplate?.categoryCode||null,   // ★ was never sent
+          checklistResults:buildChecklist(),
           items: selLotsArr.map(lot => ({
             lotId:           lot.lotId,
             qtyAccepted:     parseFloat(perItem[lot.lotId]?.accepted||0),
@@ -511,7 +645,6 @@ const QcInspection = () => {
       const stillPending = respData?.batchStatus === 'PENDING_QC';
       if (stillPending) {
         toast.success(`${selLotsArr.length} item(s) decided — ${remaining} item(s) remain in the waiting list`);
-        // stay on the page; reload so only the remaining items show
         await loadBatch();
       } else {
         toast.success('Per-item decisions recorded!');
@@ -533,39 +666,65 @@ const QcInspection = () => {
   return (
     <div className="qci-page">
 
-      {/* CHECKLIST DIALOG */}
-      {dialogLot && (
-        <ChecklistDialog lot={dialogLot} stages={stages} results={clResults}
-          selStages={selStages} onToggleStage={toggleStage} onSelectAll={selectAllStages}
-          onChange={handleClChange} onClose={()=>setDialogLot(null)}/>
-      )}
+      {/* ═══ HEADER ═══════════════════════════════════════════
+          ★ REDESIGNED. Was: a header bar, then four big meta cards eating a
+          whole row, then a separate "Inspector Details" card eating another.
+          Three bands of chrome before any actual work. Now one band: identity
+          on the left, inspector + status on the right, facts on a thin strip
+          underneath. */}
+      <div className="qci-hero">
+        <div className="qci-hero-top">
+          <button className="qci-back-btn" onClick={()=>navigate('/qc/queue')} title="Back to queue">
+            <FiArrowLeft size={16}/>
+          </button>
+          <div className="qci-hero-icon"><FiClipboard size={18}/></div>
 
-      {/* HEADER */}
-      <div className="qci-header">
-        <div className="qci-header-left">
-          <button className="qci-back-btn" onClick={()=>navigate('/qc/queue')}><FiArrowLeft size={16}/></button>
-          <div className="qci-header-icon"><FiClipboard size={20}/></div>
-          <div>
+          <div className="qci-hero-id">
             <h1 className="qci-title">{batch.batchRef||`Batch #${id}`}</h1>
-            <p className="qci-subtitle">QC Inspection · {totalLots} item{totalLots!==1?'s':''} · {totalQty} units</p>
+            <p className="qci-subtitle">
+              {totalLots} item{totalLots!==1?'s':''} · {totalQty} units
+            </p>
+          </div>
+
+          <div className="qci-hero-right">
+            {/* ★ TASK 3 — inspector lives here now, next to the status */}
+            {editingName ? (
+              <div className="qci-hero-name-edit">
+                <FiUser size={12}/>
+                <input type="text" autoFocus placeholder="Inspector name"
+                  value={inspectorName}
+                  onChange={e=>saveInspectorName(e.target.value)}
+                  onBlur={()=>setEditingName(false)}
+                  onKeyDown={e=>{ if(e.key==='Enter'||e.key==='Escape') setEditingName(false); }}/>
+                <button onClick={()=>setEditingName(false)} title="Done"><FiCheck size={12}/></button>
+              </div>
+            ) : (
+              <button className="qci-hero-name" onClick={()=>setEditingName(true)}
+                title="Inspector — click to change">
+                <FiUser size={12}/>
+                <span>{inspectorName||'—'}</span>
+                <FiEdit2 size={10} className="qci-hero-name-pen"/>
+              </button>
+            )}
+            <span className="qci-status-badge">PENDING QC</span>
           </div>
         </div>
-        <span className="qci-status-badge">PENDING QC</span>
-      </div>
 
-      {/* META CARDS */}
-      <div className="qci-meta-row">
-        {[
-          { icon:FiPackage,  label:'CATEGORY', value:batch.categoryName||batch.categoryCode||'—' },
-          { icon:FiUser,     label:'SUPPLIER',  value:batch.supplierName||'—' },
-          { icon:FiFileText, label:'INVOICE',   value:batch.invoiceNo||batch.invoiceNumber||'—' },
-          { icon:FiCalendar, label:'RECEIVED',  value:fmtDate(batch.receivedDate) },
-        ].map(({icon:Icon,label,value})=>(
-          <div key={label} className="qci-meta-card">
-            <Icon size={16} className="qci-meta-icon"/>
-            <div><span className="qci-meta-label">{label}</span><span className="qci-meta-value">{value}</span></div>
-          </div>
-        ))}
+        {/* facts strip — was four cards, now one line */}
+        <div className="qci-hero-facts">
+          {[
+            { icon:FiPackage,  label:'Category', value:batch.categoryName||batch.categoryCode||'—' },
+            { icon:FiUser,     label:'Supplier', value:batch.supplierName||'—' },
+            { icon:FiFileText, label:'Invoice',  value:batch.invoiceNo||batch.invoiceNumber||'—' },
+            { icon:FiCalendar, label:'Received', value:fmtDate(batch.receivedDate) },
+          ].map(({icon:Icon,label,value})=>(
+            <div key={label} className="qci-fact" title={`${label}: ${value}`}>
+              <Icon size={12} className="qci-fact-icon"/>
+              <span className="qci-fact-label">{label}</span>
+              <span className="qci-fact-value">{value}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* ── TEMPLATE SELECTOR ─────────────────────────────────── */}
@@ -582,7 +741,7 @@ const QcInspection = () => {
             <div className="qci-tpl-select-wrap">
               <label className="qci-tpl-label">Inspection Checklist:</label>
               <select className="qci-tpl-select" value={selTemplate?.id||''}
-                onChange={e => { const t=allTemplates.find(x=>String(x.id)===e.target.value); setSelTemplate(t||null); setShowPreview(false); }}>
+                onChange={e => { const t=allTemplates.find(x=>String(x.id)===e.target.value); setSelTemplate(t||null); }}>
                 <option value="">— Choose a checklist template —</option>
                 {loadingTpl && <option disabled>Loading templates…</option>}
                 {allTemplates.map(t=>(
@@ -598,68 +757,116 @@ const QcInspection = () => {
                 <span className="qci-tpl-info">{selTemplate.categoryName} · {selTemplate.formNo} · {stages.length} stages</span>
                 <button className="qci-tpl-btn excel" onClick={()=>downloadTemplate('excel')}><FiDownload size={12}/> Excel</button>
                 <button className="qci-tpl-btn word"  onClick={()=>downloadTemplate('docx')}><FiDownload size={12}/> Word</button>
-                <button className="qci-tpl-btn preview" onClick={()=>setShowPreview(p=>!p)}><FiEye size={12}/> {showPreview?'Hide':'Preview'}</button>
-                <button className="qci-tpl-btn clear" onClick={()=>{setSelTemplate(null);setShowPreview(false);}}>Clear</button>
+                <button className="qci-tpl-btn preview" onClick={()=>setShowPreview(p=>!p)}><FiEye size={12}/> {showPreview?'Hide':'Show'} Checklist</button>
+                <button className="qci-tpl-btn clear" onClick={()=>{setSelTemplate(null);}}>Clear</button>
               </div>
             )}
           </div>
-          {showPreview && selTemplate && (
-            <div className="qci-tpl-preview-wrap">
-              {/* ★ TASK 4: live preview wired to real inspection values */}
-              <TemplatePreview template={selTemplate} batch={batch}
-                selStages={selStages} getStageResult={getStageResult}
-                inspectorName={inspectorName} liveDecision={liveDecision}
-                inspQty={inspQty} onInspQty={setStageInspQty}
-                lotQtyDisplay={lotQtyDisplay}/>
+
+          {/* Stage applicability ticks */}
+          {selTemplate && stages.length > 0 && (
+            <div className="qci-stage-toggle-row">
+              <span className="qci-stage-toggle-label">Applicable checkpoints:</span>
+              {stages.map(s => (
+                <label key={s.id} className={`qci-stage-toggle ${selStages.has(s.id) ? 'on' : ''}`}>
+                  <input type="checkbox" checked={selStages.has(s.id)} onChange={()=>toggleStage(s.id)}/>
+                  {s.slNo || ''} {s.checkPoint}
+                </label>
+              ))}
+              <button className="qci-sel-link" onClick={()=>selectAllStages(true)}>All</button>
+              <button className="qci-sel-link" onClick={()=>selectAllStages(false)}>None</button>
+            </div>
+          )}
+
+          {showPreview && selTemplate && lots.length > 0 && (
+            <div className="qci-tpl-preview-wrap" ref={previewRef}>
+
+              {/* ★ ONE FORM PER LOT — tab strip */}
+              <div className="qci-lot-tabs-row">
+                <span className="qci-lot-tabs-label">Checklist for lot:</span>
+                {draftSavedAt && (
+                  <span className="qci-draft-saved" title="The filled checklist is saved on the server">
+                    ✓ Saved {draftSavedAt.toLocaleTimeString('en-IN',
+                      { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+                <div className="qci-lot-tabs">
+                  {lots.map((l, i) => {
+                    const on  = l.lotId === activeLotId;
+                    const qty = parseFloat(l.qtyReceived||l.quantity||l.receivedQty||0);
+                    const dec = shownDecisionFor(l);
+                    return (
+                      <button key={l.lotId} type="button"
+                        className={`qci-lot-tab ${on ? 'active' : ''}`}
+                        onClick={() => setActiveLotId(l.lotId)}
+                        title={l.description || l.partNumber || ''}>
+                        <span className="qci-lot-tab-no">{i+1}</span>
+                        <span className="qci-lot-tab-part">{l.partNumber || `Lot ${l.lotId}`}</span>
+                        <span className="qci-lot-tab-qty">{qty.toFixed(0)}</span>
+                        {dec && <span className={`qci-lot-tab-dot ${dec.toLowerCase()}`}/>}
+                      </button>
+                    );
+                  })}
+                </div>
+                {lots.length > 1 && (
+                  <div className="qci-lot-dl-group">
+                    <button type="button" className="qci-lot-dl-btn combined"
+                      onClick={downloadAllCombined}
+                      title="All lots in one file, page break between each">
+                      <FiDownload size={11}/> All {lots.length} combined
+                    </button>
+                    <button type="button" className="qci-lot-dl-btn each"
+                      onClick={downloadEachSeparately}
+                      title="A separate file per lot">
+                      <FiDownload size={11}/> One by one
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Every lot stays mounted so any of them can be printed
+                  without switching tabs; only the active one is visible. */}
+              {lots.map(l => (
+                <div key={l.lotId}
+                     className="qci-lot-pane"
+                     data-lotid={l.lotId}
+                     style={{ display: l.lotId === activeLotId ? 'block' : 'none' }}>
+                  <TemplatePreview template={selTemplate} batch={batch} lot={l}
+                    selStages={selStages} getStageResult={getStageResult}
+                    inspectorName={inspectorName} liveDecision={shownDecisionFor(l)}
+                    onDecisionTick={toggleLotTick}
+                    inspQty={inspQty} onInspQty={setStageInspQty}
+                    onStageResult={setStageResult} onStageRemarks={setStageRemarks}
+                    onDownloadFilled={downloadLot}/>
+                </div>
+              ))}
             </div>
           )}
         </div>
       </div>
 
-      {/* ── INSPECTOR + MODE TOGGLE ── */}
-      <div className="qci-split-header-row">
-        <div className="qci-card qci-inspector-panel">
-          <div className="qci-card-head">
-            <FiUser size={14}/> Inspector Details
-            {/* ★ TASK 3: edit toggle */}
-            <button className="qci-name-edit-btn" title="Edit inspector name"
-              onClick={()=>setEditingName(e=>!e)}>
-              <FiEdit2 size={12}/>
-            </button>
-          </div>
-          <div className="qci-card-body">
-            {editingName ? (
-              <div className="qci-name-edit-row">
-                <input type="text" className="qci-input" placeholder="Inspector name" autoFocus
-                  value={inspectorName}
-                  onChange={e=>saveInspectorName(e.target.value)}
-                  onKeyDown={e=>{ if(e.key==='Enter') setEditingName(false); }}/>
-                <button className="qci-name-save-btn" onClick={()=>setEditingName(false)}>
-                  <FiCheck size={13}/>
-                </button>
-              </div>
-            ) : (
-              <div className="qci-name-display" onClick={()=>setEditingName(true)} title="Click to edit">
-                <span>{inspectorName||'—'}</span>
-                <FiEdit2 size={12} className="qci-name-display-pen"/>
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="qci-mode-toggle-panel">
-          <button className={`qci-toggle-btn ${mode==='bulk'?'active':''}`} onClick={()=>setMode('bulk')}>
-            <FiGrid size={14}/> Bulk Decision{mode==='bulk'&&<span className="qci-mode-dot"/>}
+      {/* ★ MODE — was two full-width cards ~100px tall for a binary choice.
+          A segmented control says the same thing in a fifth of the space. */}
+      <div className="qci-mode-row">
+        <span className="qci-mode-label">Decision mode</span>
+        <div className="qci-seg">
+          <button className={`qci-seg-btn ${mode==='bulk'?'active':''}`} onClick={()=>setMode('bulk')}>
+            <FiGrid size={13}/> Bulk
           </button>
-          <button className={`qci-toggle-btn ${mode==='per-item'?'active':''}`} onClick={()=>setMode('per-item')}>
-            <FiList size={14}/> Per-Item Decision{mode==='per-item'&&<span className="qci-mode-dot"/>}
+          <button className={`qci-seg-btn ${mode==='per-item'?'active':''}`} onClick={()=>setMode('per-item')}>
+            <FiList size={13}/> Per-Item
           </button>
         </div>
+        <span className="qci-mode-hint">
+          {mode==='bulk'
+            ? 'One decision applied to every item in the batch'
+            : 'Split accepted / rejected / held per item'}
+        </span>
       </div>
 
       {/* ══ BULK DECISION ══════════════════════════════════════ */}
       {mode === 'bulk' && (
         <>
-          {/* ★ Batch items table ONLY in bulk mode */}
           <div className="qci-card">
             <div className="qci-card-head">
               <FiPackage size={14}/> Batch Items ({totalLots}) — {totalQty} total units
@@ -685,38 +892,64 @@ const QcInspection = () => {
             </table>
           </div>
 
+          {/* ★ REDESIGNED. Was: three oversized "cards" for what is a
+              three-way radio, a 3-row textarea, and THREE submit buttons of
+              near-equal weight — so the one destructive-ish path (Submit &
+              Generate PDF) looked the same as Cancel. Now: pills sized to
+              their label, and a sticky bar with one clear primary. */}
           <div className="qci-card">
             <div className="qci-card-head"><FiCheckCircle size={15}/> Bulk Decision</div>
             <div className="qci-card-body">
-              {/* ★ TASK 2: compact decision buttons */}
-              <div className="qci-bulk-options">
+              <div className="qci-verdict-row">
                 {Object.entries(DECISIONS).map(([key,cfg])=>{
                   const Icon=cfg.icon; const active=bulkDecision===key;
                   return (
-                    <button key={key} className={`qci-decision-card ${active?'active':''}`}
+                    <button key={key} className={`qci-verdict ${active?'active':''}`}
                       onClick={()=>setBulkDecision(key)}
-                      style={active?{background:cfg.bg,borderColor:cfg.color}:{}}>
-                      <Icon size={16} style={{color:cfg.color}}/>
-                      <span style={{color:cfg.color,fontWeight:700}}>{cfg.label}</span>
-                      {active&&<span className="qci-decision-check" style={{background:cfg.color}}><FiCheck size={10}/></span>}
+                      style={active?{background:cfg.bg,borderColor:cfg.color,color:cfg.color}:{}}>
+                      <Icon size={14} style={{color:cfg.color}}/>
+                      <span>{cfg.label}</span>
+                      {active && <FiCheck size={12} className="qci-verdict-tick" style={{color:cfg.color}}/>}
                     </button>
                   );
                 })}
               </div>
               <div className="qci-field">
-                <label>Remarks (optional)</label>
-                <textarea className="qci-textarea" rows={3} placeholder="Add notes for this bulk decision…"
+                <label>Remarks <span className="qci-optional">optional</span></label>
+                <textarea className="qci-textarea" rows={2} placeholder="Add notes for this bulk decision…"
                   value={bulkRemarks} onChange={e=>setBulkRemarks(e.target.value)}/>
               </div>
-              <div className="qci-submit-row">
-                <button className="qci-btn-secondary" onClick={()=>navigate('/qc/queue')} disabled={submitting}>Cancel</button>
-                <button className="qci-btn-secondary" onClick={()=>handleBulkSubmit(false)} disabled={submitting||!bulkDecision}>
-                  {submitting?'Submitting…':'Submit Decision Only'}
-                </button>
-                <button className="qci-btn-primary" onClick={()=>handleBulkSubmit(true)} disabled={submitting||!bulkDecision}>
-                  {submitting?'Submitting…':'Submit & Generate PDF'}
-                </button>
-              </div>
+            </div>
+          </div>
+
+          {/* ★ sticky action bar — the decision is always one reach away,
+              and the primary action is unmistakably the primary action */}
+          <div className="qci-actionbar">
+            <div className="qci-actionbar-state">
+              {bulkDecision ? (
+                <>
+                  <span className="qci-ab-dot" style={{background:DECISIONS[bulkDecision].color}}/>
+                  <strong style={{color:DECISIONS[bulkDecision].color}}>{DECISIONS[bulkDecision].label}</strong>
+                  <span className="qci-ab-sub">all {totalLots} item{totalLots!==1?'s':''} · {totalQty} units</span>
+                </>
+              ) : (
+                <span className="qci-ab-sub">Pick a verdict above to submit</span>
+              )}
+            </div>
+            <div className="qci-actionbar-btns">
+              <button className="qci-btn-ghost" onClick={()=>navigate('/qc/queue')} disabled={submitting}>
+                Cancel
+              </button>
+              <button className="qci-btn-secondary" onClick={()=>handleBulkSubmit(false)}
+                disabled={submitting||!bulkDecision} title="Record the decision without producing a PDF">
+                {submitting?'Submitting…':'Submit only'}
+              </button>
+              <button className="qci-btn-primary" onClick={()=>handleBulkSubmit(true)}
+                disabled={submitting||!bulkDecision}>
+                {submitting
+                  ? <><FiRefreshCw size={13} className="qci-spin"/> Submitting…</>
+                  : <><FiCheckCircle size={14}/> Submit &amp; Generate PDF</>}
+              </button>
             </div>
           </div>
         </>
@@ -740,7 +973,6 @@ const QcInspection = () => {
             <table className="qci-per-item-table">
               <thead>
                 <tr>
-                  {/* ★ NEW: select-all items tick */}
                   <th style={{width:34, textAlign:'center'}}>
                     <input type="checkbox" className="qci-lot-checkbox"
                       title="Select / deselect all items"
@@ -755,7 +987,6 @@ const QcInspection = () => {
                   <th className="num-col" style={{width:78}}>Rejected</th>
                   <th className="num-col" style={{width:70}}>Held</th>
                   <th>Remarks</th>
-                  {stages.length>0 && <th style={{width:90}}>Checklist</th>}
                 </tr>
               </thead>
               <tbody>
@@ -765,11 +996,9 @@ const QcInspection = () => {
                   const r  = parseFloat(lot.qtyReceived||lot.quantity||lot.receivedQty||0);
                   const t  = parseFloat(d.accepted||0)+parseFloat(d.rejected||0)+parseFloat(d.held||0);
                   const mm = selected && Math.abs(t-r)>0.001;
-                  const sc = stageCount(lot.lotId);
                   return (
                     <tr key={lot.lotId}
                         className={`${mm?'qci-row-mismatch':''} ${selected?'':'qci-lot-off'}`}>
-                      {/* ★ NEW: item tick — unticked rows stay in waiting list */}
                       <td style={{textAlign:'center'}}>
                         <input type="checkbox" className="qci-lot-checkbox"
                           checked={selected}
@@ -803,14 +1032,6 @@ const QcInspection = () => {
                           value={d.remarks??''}
                           onChange={e=>updatePerItem(lot.lotId,'remarks',e.target.value)}/>
                       </td>
-                      {stages.length>0 && (
-                        <td>
-                          <button className="qci-checklist-open-btn" disabled={!selected}
-                            onClick={()=>setDialogLot(lot)}>
-                            <FiList size={11}/> {sc} <FiChevronDown size={10}/>
-                          </button>
-                        </td>
-                      )}
                     </tr>
                   );
                 })}
@@ -822,7 +1043,7 @@ const QcInspection = () => {
                   <td className="num-col qci-tot-accepted">{totAccepted}</td>
                   <td className="num-col qci-tot-rejected">{totRejected}</td>
                   <td className="num-col qci-tot-held">{totHeld}</td>
-                  <td colSpan={stages.length>0?2:1}></td>
+                  <td></td>
                 </tr>
               </tfoot>
             </table>
@@ -831,7 +1052,8 @@ const QcInspection = () => {
             <div className="qci-warn-banner">
               <FiInfo size={14}/>
               <span>Each ticked row: <strong>Accepted + Rejected + Held = Received</strong>.
-                Unticked items are <strong>not decided now</strong> — they stay in the QC waiting list.</span>
+                Unticked items are <strong>not decided now</strong> — they stay in the QC waiting list.
+                Tick Pass/Fail/NA and Qty per checkpoint in the checklist preview above.</span>
             </div>
             {selLotsArr.length < totalLots && (
               <div className="qci-waiting-banner">
@@ -839,13 +1061,36 @@ const QcInspection = () => {
                 <span><strong>{totalLots - selLotsArr.length}</strong> item(s) will remain pending in the queue after submit.</span>
               </div>
             )}
-            <div className="qci-submit-row" style={{marginTop:12}}>
-              <button className="qci-btn-secondary" onClick={()=>navigate('/qc/queue')} disabled={submitting}>Cancel</button>
-              <button className="qci-btn-secondary" onClick={()=>handlePerItemSubmit(false)} disabled={submitting||selLotsArr.length===0}>
-                {submitting?'Submitting…':`Submit ${selLotsArr.length} Item${selLotsArr.length!==1?'s':''}`}
+          </div>
+
+          {/* ★ same sticky bar as bulk — one interaction model for both modes */}
+          <div className="qci-actionbar">
+            <div className="qci-actionbar-state">
+              {selLotsArr.length ? (
+                <>
+                  <span className="qci-ab-dot" style={{background:'#4f46e5'}}/>
+                  <strong>{selLotsArr.length} of {totalLots}</strong>
+                  <span className="qci-ab-sub">
+                    {totAccepted} accepted · {totRejected} rejected · {totHeld} held
+                  </span>
+                </>
+              ) : (
+                <span className="qci-ab-sub">Tick at least one item to submit</span>
+              )}
+            </div>
+            <div className="qci-actionbar-btns">
+              <button className="qci-btn-ghost" onClick={()=>navigate('/qc/queue')} disabled={submitting}>
+                Cancel
               </button>
-              <button className="qci-btn-primary" onClick={()=>handlePerItemSubmit(true)} disabled={submitting||selLotsArr.length===0}>
-                {submitting?'Submitting…':'Submit & Generate PDF'}
+              <button className="qci-btn-secondary" onClick={()=>handlePerItemSubmit(false)}
+                disabled={submitting||selLotsArr.length===0} title="Record the decisions without producing a PDF">
+                {submitting?'Submitting…':'Submit only'}
+              </button>
+              <button className="qci-btn-primary" onClick={()=>handlePerItemSubmit(true)}
+                disabled={submitting||selLotsArr.length===0}>
+                {submitting
+                  ? <><FiRefreshCw size={13} className="qci-spin"/> Submitting…</>
+                  : <><FiCheckCircle size={14}/> Submit &amp; Generate PDF</>}
               </button>
             </div>
           </div>

@@ -1,73 +1,150 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import axios from 'axios';
 import {
   FiFileText, FiSearch, FiCalendar, FiUser, FiPackage,
-  FiDownload, FiRefreshCw, FiX, FiExternalLink, FiHash,
-  FiTruck, FiDollarSign, FiClock, FiFilter, FiEye, FiPrinter,
-  FiCheckCircle, FiLink, FiChevronLeft, FiChevronRight,
+  FiDownload, FiRefreshCw, FiExternalLink, FiHash,
+  FiTruck, FiClock, FiPrinter, FiChevronLeft, FiChevronRight,
+  FiCheckCircle, FiLink, FiChevronDown, FiArrowDown, FiArrowUp,
+  FiInbox, FiPaperclip, FiAlertTriangle, FiShield, FiX, FiArrowLeft,
+  FiEye, FiChevronsLeft, FiChevronsRight,
 } from 'react-icons/fi';
-import api from '../api/axios'; // ⚠️ adjust to your axios instance path
-// Common patterns — use whichever your project actually has:
-import api from '../api/axiosConfig';
-import api from '../services/api';
-import axios from '../api/axiosInstance';
+
+// ── Thin axios wrapper so this file behaves like the rest of the app ──
+const authHeaders = () => ({
+  headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+});
+const api = {
+  get: (url, config = {}) =>
+    axios.get(url, { ...config, headers: { ...authHeaders().headers, ...(config.headers || {}) } }),
+};
+
+// ── Error → human-readable message ──────────────────────────
+const describeError = (e) => {
+  if (e.response) {
+    return `Server error ${e.response.status}: ${e.response.data?.message || e.response.statusText || 'no message'}`;
+  }
+  return `Network error: ${e.message} (URL: ${e.config?.baseURL || ''}${e.config?.url || ''})`;
+};
+
 // ── Helpers ──────────────────────────────────────────────────
 const fmtDate = (d) => {
   if (!d) return '—';
-  try {
-    return new Date(d).toLocaleDateString('en-IN', {
-      day: '2-digit', month: 'short', year: 'numeric',
-    });
-  } catch { return d; }
+  try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); }
+  catch { return d; }
 };
-
 const fmtDateTime = (d) => {
   if (!d) return '—';
   try {
     return new Date(d).toLocaleString('en-IN', {
-      day: '2-digit', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
   } catch { return d; }
 };
-
-const fmtMoney = (v, code = 'INR') => {
-  if (v == null) return '—';
-  try {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency', currency: code || 'INR', maximumFractionDigits: 2,
-    }).format(v);
-  } catch { return `${code} ${v}`; }
+const num = (v) => (v == null ? 0 : Number(v) || 0);
+const initials = (name) => {
+  if (!name) return '#';
+  const p = name.trim().split(/\s+/);
+  return ((p[0]?.[0] || '') + (p[1]?.[0] || '')).toUpperCase() || '#';
+};
+const AV = ['#6366f1', '#0ea5e9', '#0d9488', '#d97706', '#db2777', '#7c3aed', '#0891b2', '#dc2626'];
+const avatarColor = (key = '') => {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % AV.length;
+  return AV[h];
+};
+const TAG = [
+  { bg: '#eef2ff', fg: '#4f46e5' }, { bg: '#ecfeff', fg: '#0891b2' },
+  { bg: '#f0fdf4', fg: '#16a34a' }, { bg: '#fef9c3', fg: '#a16207' },
+  { bg: '#fce7f3', fg: '#be185d' }, { bg: '#f3e8ff', fg: '#7c3aed' },
+  { bg: '#fff7ed', fg: '#c2410c' }, { bg: '#e0f2fe', fg: '#0369a1' },
+];
+const tagColor = (key = '') => {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % TAG.length;
+  return TAG[h];
+};
+const verifyInvoice = (inv) => {
+  const hasFile = !!inv.hasFile;
+  const linked = !!inv.stockInBatchId;
+  if (hasFile && linked) return { level: 'verified', label: 'Verified', color: '#16a34a' };
+  if (hasFile || linked) return { level: 'partial', label: 'Partial', color: '#d97706' };
+  return { level: 'open', label: 'Open', color: '#94a3b8' };
 };
 
-const num = (v) => (v == null ? 0 : Number(v) || 0);
-
 // ════════════════════════════════════════════════════════════
-//  MAIN PAGE
+//  ROOT — switches LIST ↔ DETAIL
+//  ★ Passes the whole row: detail loads by id OR by invoiceNo
 // ════════════════════════════════════════════════════════════
 const Invoices = () => {
-  const [rows, setRows]      = useState([]);   // InvoiceSummaryDto[]
+  const [view, setView] = useState('list');
+  const [activeRef, setActiveRef] = useState(null); // { id, invoiceNo }
+
+  const openDetail = (inv) => {
+    setActiveRef({ id: inv.id ?? null, invoiceNo: inv.invoiceNo ?? null });
+    setView('detail');
+    window.scrollTo(0, 0);
+  };
+  const backToList = () => { setView('list'); window.scrollTo(0, 0); };
+
+  const downloadFile = async (id, fileName) => {
+    if (id == null) return;
+    try {
+      const res = await axios.get(`/api/qc/invoices/${id}/file`, {
+        responseType: 'blob',
+        ...authHeaders(),
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url; a.download = fileName || `invoice-${id}`;
+      document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) { console.error('Download failed', e); }
+  };
+
+  return (
+    <div style={S.page}>
+      {view === 'list'
+        ? <ListScreen onOpen={openDetail} />
+        : <DetailScreen refInfo={activeRef} onBack={backToList} onDownload={downloadFile} />}
+      <style>{`
+        .spin{animation:spin 1s linear infinite}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes scrIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+        .inv-tr{transition:background .12s}
+        .inv-tr:hover{background:#f6f8fc}
+        .inv-item-row:hover{background:#fafbfc}
+        @media print{
+          body *{visibility:hidden}
+          #inv-print,#inv-print *{visibility:visible}
+          #inv-print{position:absolute;left:0;top:0;width:100%;padding:0}
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// ════════════════════════════════════════════════════════════
+//  SCREEN 1 — STOCK-OVERVIEW-STYLE TABLE
+// ════════════════════════════════════════════════════════════
+const ListScreen = ({ onOpen }) => {
+  const [rows, setRows]     = useState([]);
   const [q, setQ]           = useState('');
   const [page, setPage]     = useState(0);
-  const [size]              = useState(10);
+  const [size, setSize]     = useState(10);
   const [totalPages, setTP] = useState(0);
   const [total, setTotal]   = useState(0);
   const [loading, setLoad]  = useState(false);
+  const [error, setError]   = useState(null);
 
-  // client-side date filter
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate]     = useState('');
+  const [sortKey, setSortKey] = useState('date');
+  const [sortDir, setSortDir] = useState('desc');
+  const [expandedId, setExpandedId] = useState(null);
+  const [goTo, setGoTo] = useState('');
 
-  // detail modal
-  const [detail, setDetail]            = useState(null); // InvoiceDetailDto
-  const [detailLoading, setDetailLoad] = useState(false);
-
-  // ── Fetch page ───────────────────────────────────────────
-  const load = useCallback(async (searchQ = q, pageNo = page) => {
-    setLoad(true);
+  const load = useCallback(async (searchQ = q, pageNo = page, pageSize = size) => {
+    setLoad(true); setError(null);
     try {
-      const res = await api.get('/api/qc/invoices', {
-        params: { q: searchQ, page: pageNo, size },
-      });
+      const res = await api.get('/api/qc/invoices', { params: { q: searchQ, page: pageNo, size: pageSize } });
       const data = res.data;
       setRows(data.content || []);
       setTP(data.totalPages || 0);
@@ -75,380 +152,238 @@ const Invoices = () => {
     } catch (e) {
       console.error('Failed to load invoices', e);
       setRows([]);
-    } finally {
-      setLoad(false);
-    }
+      setError(describeError(e));
+    } finally { setLoad(false); }
   }, [q, page, size]);
 
-  useEffect(() => { load(q, page); }, [page]); // eslint-disable-line
+  useEffect(() => { load(q, page, size); /* eslint-disable-line */ }, [page, size]);
 
-  const onSearch = () => { setPage(0); load(q, 0); };
+  const onSearch = () => { setPage(0); load(q, 0, size); };
 
-  // ── Client-side date filtering on current page ───────────
-  const filteredRows = useMemo(() => {
-    return rows.filter(r => {
-      if (!r.invoiceDate) return true;
-      const d = new Date(r.invoiceDate);
-      if (fromDate && d < new Date(fromDate)) return false;
-      if (toDate && d > new Date(toDate + 'T23:59:59')) return false;
-      return true;
+  const toggleSort = (key) => {
+    if (sortKey === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(key); setSortDir(key === 'date' || key === 'items' ? 'desc' : 'asc'); }
+  };
+
+  const sortedRows = useMemo(() => {
+    const r = [...rows];
+    const dir = sortDir === 'asc' ? 1 : -1;
+    r.sort((a, b) => {
+      let av, bv;
+      switch (sortKey) {
+        case 'supplier': av = (a.supplierName || '').toLowerCase(); bv = (b.supplierName || '').toLowerCase(); break;
+        case 'items':    av = num(a.itemCount); bv = num(b.itemCount); break;
+        case 'invoice':  av = (a.invoiceNo || '').toLowerCase(); bv = (b.invoiceNo || '').toLowerCase(); break;
+        default:         av = a.invoiceDate ? new Date(a.invoiceDate).getTime() : 0;
+                         bv = b.invoiceDate ? new Date(b.invoiceDate).getTime() : 0;
+      }
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return 0;
     });
-  }, [rows, fromDate, toDate]);
+    return r;
+  }, [rows, sortKey, sortDir]);
 
-  // ── Stats on current view ────────────────────────────────
-  const stats = useMemo(() => {
-    const valueSum = filteredRows.reduce((s, r) => s + num(r.invoiceTotal), 0);
-    const itemSum  = filteredRows.reduce((s, r) => s + num(r.itemCount), 0);
-    const withFile = filteredRows.filter(r => r.hasFile).length;
-    const linked   = filteredRows.filter(r => r.stockInBatchId).length;
-    return { count: filteredRows.length, valueSum, itemSum, withFile, linked };
-  }, [filteredRows]);
+  const filterActive = q.trim().length > 0;
+  const from = total === 0 ? 0 : page * size + 1;
+  const to = page * size + sortedRows.length;
 
-  // ── Open detail modal ────────────────────────────────────
-  const openDetail = async (id) => {
-    setDetailLoad(true);
-    setDetail({ id, __loading: true });
-    try {
-      const res = await api.get(`/api/qc/invoices/${id}`);
-      setDetail(res.data);
-    } catch (e) {
-      console.error('Failed to load detail', e);
-      setDetail(null);
-    } finally {
-      setDetailLoad(false);
-    }
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 1) return [0];
+    const out = []; const win = 1;
+    const start = Math.max(0, page - win);
+    const end = Math.min(totalPages - 1, page + win);
+    out.push(0);
+    if (start > 1) out.push('…');
+    for (let p = Math.max(1, start); p <= Math.min(totalPages - 2, end); p++) out.push(p);
+    if (end < totalPages - 2) out.push('…');
+    if (totalPages > 1) out.push(totalPages - 1);
+    return out.filter((v, i) => v !== out[i - 1]);
+  }, [page, totalPages]);
+
+  const submitGoTo = () => {
+    const n = parseInt(goTo, 10);
+    if (!isNaN(n) && n >= 1 && n <= totalPages) setPage(n - 1);
+    setGoTo('');
   };
 
-  const downloadFile = async (id, fileName) => {
-    try {
-      const res = await api.get(`/api/qc/invoices/${id}/file`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName || `invoice-${id}`;
-      document.body.appendChild(a); a.click(); a.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (e) { console.error('Download failed', e); }
-  };
-
-  // ── CSV export of current view ───────────────────────────
-  const exportCsv = () => {
-    const header = ['Invoice No', 'Date', 'Supplier', 'GSTIN', 'PO No', 'Items', 'Total', 'Currency', 'Batch'];
-    const lines = filteredRows.map(r => [
-      r.invoiceNo, fmtDate(r.invoiceDate), r.supplierName || '',
-      r.supplierGstin || '', r.poNo || '', r.itemCount ?? 0,
-      num(r.invoiceTotal), r.currencyCode || 'INR', r.stockInBatchId || '',
-    ].map(c => `"${String(c).replace(/"/g, '""')}"`).join(','));
-    const csv = [header.join(','), ...lines].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `invoices-${Date.now()}.csv`;
-    document.body.appendChild(a); a.click(); a.remove();
-    window.URL.revokeObjectURL(url);
-  };
+  const SortCaret = ({ k }) => sortKey !== k
+    ? <FiChevronDown size={12} style={{ opacity: 0.4 }} />
+    : (sortDir === 'asc' ? <FiArrowUp size={12} /> : <FiArrowDown size={12} />);
 
   return (
-    <div style={S.wrap}>
-      {/* ── Header ── */}
-      <div style={S.head}>
-        <div style={S.titleBox}>
-          <span style={S.titleIcon}><FiFileText size={20} /></span>
-          <div>
-            <h2 style={S.title}>Purchase Invoices</h2>
-            <span style={S.sub}>{total} invoice{total !== 1 ? 's' : ''} in system</span>
+    <div style={{ animation: 'scrIn .25s ease' }}>
+      <div style={S.banner}>
+        <div style={S.bannerSheen} />
+        <div style={S.bannerInner}>
+          <span style={S.bannerIcon}><FiFileText size={22} /></span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={S.bannerTitle}>Purchase Invoices</h2>
+            <span style={S.bannerSub}>Search · view · verify scanned invoices</span>
           </div>
         </div>
-        <div style={S.headActions}>
-          <button style={S.ghostBtn} onClick={exportCsv} title="Export current view to CSV">
-            <FiDownload size={15} /> Export CSV
-          </button>
-          <button style={S.iconBtn} onClick={() => load(q, page)} title="Refresh">
-            <FiRefreshCw size={16} className={loading ? 'spin' : ''} />
-          </button>
-        </div>
       </div>
 
-      {/* ── Stat cards ── */}
-      <div style={S.statRow}>
-        <StatCard icon={<FiFileText />} label="Invoices (view)" value={stats.count} color="#06b6d4" />
-        <StatCard icon={<FiDollarSign />} label="Total value" value={fmtMoney(stats.valueSum)} color="#10b981" />
-        <StatCard icon={<FiPackage />} label="Line items" value={stats.itemSum} color="#6366f1" />
-        <StatCard icon={<FiCheckCircle />} label="With file" value={`${stats.withFile}/${stats.count}`} color="#f59e0b" />
-        <StatCard icon={<FiLink />} label="Linked to batch" value={`${stats.linked}/${stats.count}`} color="#8b5cf6" />
-      </div>
-
-      {/* ── Filter bar ── */}
-      <div style={S.filterBar}>
-        <div style={S.searchBox}>
-          <FiSearch size={16} style={{ color: '#94a3b8' }} />
-          <input
-            style={S.searchInput}
-            placeholder="Search invoice no, supplier, PO…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && onSearch()}
-          />
-          <button style={S.searchBtn} onClick={onSearch}>Search</button>
-        </div>
-        <div style={S.dateFilter}>
-          <FiFilter size={14} style={{ color: '#64748b' }} />
-          <label style={S.dateLabel}>From</label>
-          <input type="date" style={S.dateInput} value={fromDate} onChange={e => setFromDate(e.target.value)} />
-          <label style={S.dateLabel}>To</label>
-          <input type="date" style={S.dateInput} value={toDate} onChange={e => setToDate(e.target.value)} />
-          {(fromDate || toDate) && (
-            <button style={S.clearBtn} onClick={() => { setFromDate(''); setToDate(''); }}>Clear</button>
-          )}
-        </div>
-      </div>
-
-      {/* ── Table ── */}
       <div style={S.card}>
-        <table style={S.table}>
-          <thead>
-            <tr>
-              <th style={S.th}>Invoice No</th>
-              <th style={S.th}>Date</th>
-              <th style={S.th}>Supplier</th>
-              <th style={S.th}>GSTIN</th>
-              <th style={S.th}>PO No</th>
-              <th style={{ ...S.th, textAlign: 'center' }}>Items</th>
-              <th style={{ ...S.th, textAlign: 'right' }}>Total</th>
-              <th style={{ ...S.th, textAlign: 'center' }}>Batch</th>
-              <th style={{ ...S.th, textAlign: 'center' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && <tr><td colSpan={9} style={S.empty}>Loading…</td></tr>}
-            {!loading && filteredRows.length === 0 && (
-              <tr><td colSpan={9} style={S.empty}>No invoices match your filters</td></tr>
-            )}
-            {!loading && filteredRows.map((inv) => (
-              <tr key={inv.id} style={S.tr} onClick={() => openDetail(inv.id)}>
-                <td style={{ ...S.td, fontWeight: 600, color: '#1e3a8a' }}>{inv.invoiceNo}</td>
-                <td style={S.td}>
-                  <span style={S.cellMuted}><FiCalendar size={13} /> {fmtDate(inv.invoiceDate)}</span>
-                </td>
-                <td style={S.td}>
-                  <span style={S.cellMuted}><FiUser size={13} /> {inv.supplierName || '—'}</span>
-                </td>
-                <td style={{ ...S.td, fontFamily: 'monospace', fontSize: 12 }}>{inv.supplierGstin || '—'}</td>
-                <td style={S.td}>{inv.poNo || '—'}</td>
-                <td style={{ ...S.td, textAlign: 'center' }}>
-                  <span style={S.badge}>{inv.itemCount ?? 0}</span>
-                </td>
-                <td style={{ ...S.td, textAlign: 'right', fontWeight: 600 }}>
-                  {fmtMoney(inv.invoiceTotal, inv.currencyCode)}
-                </td>
-                <td style={{ ...S.td, textAlign: 'center' }}>
-                  {inv.stockInBatchId
-                    ? <span style={S.linkBadge}>#{inv.stockInBatchId}</span>
-                    : <span style={S.unlinked}>—</span>}
-                </td>
-                <td style={{ ...S.td, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                  <button style={S.actBtn} onClick={() => openDetail(inv.id)} title="View details">
-                    <FiEye size={14} />
-                  </button>
-                  {inv.hasFile && (
-                    <button style={{ ...S.actBtn, color: '#059669', background: '#ecfdf5' }}
-                      onClick={() => downloadFile(inv.id, inv.fileName)} title={inv.fileName}>
-                      <FiDownload size={14} />
-                    </button>
-                  )}
-                </td>
+        <div style={S.cardHead}>
+          <div style={S.cardHeadLeft}>
+            <span style={S.cubeIcon}><FiFileText size={17} /></span>
+            <span style={S.cardTitle}>Invoices</span>
+            <span style={S.resultCount}>{total} result{total !== 1 ? 's' : ''}</span>
+          </div>
+          <div style={S.cardHeadRight}>
+            <div style={S.searchBox}>
+              <FiSearch size={15} style={{ color: '#94a3b8', flexShrink: 0 }} />
+              <input style={S.searchInput} placeholder="Search invoice, supplier, PO…"
+                value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && onSearch()} />
+              {filterActive && <button style={S.clearX} onClick={() => { setQ(''); setPage(0); load('', 0, size); }}><FiX size={13} /></button>}
+            </div>
+            <span style={S.ctrlLabel}>SHOW</span>
+            <div style={S.selWrap}>
+              <select style={S.select} value={size} onChange={(e) => { setSize(Number(e.target.value)); setPage(0); }}>
+                {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <FiChevronDown size={12} style={S.selChevron} />
+            </div>
+            <span style={S.ctrlLabel}>SORT</span>
+            <div style={S.selWrap}>
+              <select style={{ ...S.select, minWidth: 130 }} value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
+                <option value="date">Date</option>
+                <option value="invoice">Invoice No</option>
+                <option value="supplier">Supplier</option>
+                <option value="items">Items</option>
+              </select>
+              <FiChevronDown size={12} style={S.selChevron} />
+            </div>
+            <button style={S.dirBtn} onClick={() => setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))}
+              title={sortDir === 'asc' ? 'Ascending' : 'Descending'}>
+              {sortDir === 'asc' ? <FiArrowUp size={15} /> : <FiArrowDown size={15} />}
+            </button>
+            <button style={S.refreshBtn} onClick={() => load(q, page, size)} title="Refresh">
+              <FiRefreshCw size={14} className={loading ? 'spin' : ''} />
+            </button>
+          </div>
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table style={S.table}>
+            <thead>
+              <tr>
+                <th style={{ ...S.th, width: 52 }} />
+                <th style={S.thSort} onClick={() => toggleSort('invoice')}>
+                  <span style={S.thInner}>INVOICE NO <SortCaret k="invoice" /></span>
+                </th>
+                <th style={S.thSort} onClick={() => toggleSort('supplier')}>
+                  <span style={S.thInner}>SUPPLIER <SortCaret k="supplier" /></span>
+                </th>
+                <th style={S.th}><span style={S.thInner}>CATEGORY</span></th>
+                <th style={S.thSort} onClick={() => toggleSort('date')}>
+                  <span style={S.thInner}>DATE <SortCaret k="date" /></span>
+                </th>
+                <th style={{ ...S.thSort, textAlign: 'center' }} onClick={() => toggleSort('items')}>
+                  <span style={{ ...S.thInner, justifyContent: 'center' }}>ITEMS <SortCaret k="items" /></span>
+                </th>
+                <th style={{ ...S.th, textAlign: 'center', width: 120 }}>STATUS</th>
+                <th style={{ ...S.th, width: 150 }}>DETAILS</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* ── Pagination ── */}
-      {totalPages > 1 && (
-        <div style={S.pager}>
-          <button style={{ ...S.pageBtn, ...(page === 0 ? S.disabled : {}) }}
-            disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>
-            <FiChevronLeft size={15} /> Prev
-          </button>
-          <span style={S.pageInfo}>Page {page + 1} of {totalPages}</span>
-          <button style={{ ...S.pageBtn, ...(page >= totalPages - 1 ? S.disabled : {}) }}
-            disabled={page >= totalPages - 1} onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}>
-            Next <FiChevronRight size={15} />
-          </button>
-        </div>
-      )}
-
-      {/* ── Detail modal ── */}
-      {detail && (
-        <InvoiceDetailModal
-          detail={detail}
-          loading={detailLoading}
-          onClose={() => setDetail(null)}
-          onDownload={downloadFile}
-        />
-      )}
-
-      <style>{`.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
-        @media print{body *{visibility:hidden}#inv-print,#inv-print *{visibility:visible}#inv-print{position:absolute;left:0;top:0;width:100%}}`}</style>
-    </div>
-  );
-};
-
-// ════════════════════════════════════════════════════════════
-//  STAT CARD
-// ════════════════════════════════════════════════════════════
-const StatCard = ({ icon, label, value, color }) => (
-  <div style={S.statCard}>
-    <span style={{ ...S.statIcon, background: `${color}1a`, color }}>{icon}</span>
-    <div>
-      <div style={S.statValue}>{value}</div>
-      <div style={S.statLabel}>{label}</div>
-    </div>
-  </div>
-);
-
-// ════════════════════════════════════════════════════════════
-//  DETAIL MODAL
-// ════════════════════════════════════════════════════════════
-const InvoiceDetailModal = ({ detail, loading, onClose, onDownload }) => {
-  const items = detail?.items || [];
-  const isLoading = loading || detail?.__loading;
-
-  const computed = useMemo(() => {
-    const sum = items.reduce((s, it) => s + num(it.lineTotal), 0);
-    const qty = items.reduce((s, it) => s + num(it.quantity), 0);
-    return { sum, qty };
-  }, [items]);
-
-  const total = num(detail?.invoiceTotal) || computed.sum;
-  const cur = detail?.currencyCode || 'INR';
-
-  return (
-    <div style={S.overlay} onClick={onClose}>
-      <div style={S.modal} onClick={e => e.stopPropagation()}>
-        {/* Modal header */}
-        <div style={S.modalHead}>
-          <div style={S.modalTitleBox}>
-            <span style={S.titleIcon}><FiFileText size={18} /></span>
-            <div>
-              <h3 style={S.modalTitle}>
-                {isLoading ? 'Loading…' : (detail.invoiceNo || `Invoice #${detail.id}`)}
-              </h3>
-              <span style={S.sub}>Purchase Invoice Detail</span>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button style={S.iconBtn} onClick={() => window.print()} title="Print"><FiPrinter size={16} /></button>
-            <button style={S.iconBtn} onClick={onClose} title="Close"><FiX size={18} /></button>
-          </div>
-        </div>
-
-        {isLoading ? (
-          <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>Loading invoice…</div>
-        ) : (
-          <div style={S.modalBody} id="inv-print">
-            {/* ── Info grid ── */}
-            <div style={S.infoGrid}>
-              <InfoField icon={<FiHash />} label="Invoice No" value={detail.invoiceNo} />
-              <InfoField icon={<FiCalendar />} label="Invoice Date" value={fmtDate(detail.invoiceDate)} />
-              <InfoField icon={<FiTruck />} label="PO No" value={detail.poNo || '—'} />
-              <InfoField icon={<FiUser />} label="Supplier" value={detail.supplierName || '—'} />
-              <InfoField icon={<FiHash />} label="Supplier GSTIN" value={detail.supplierGstin || '—'} mono />
-              <InfoField icon={<FiLink />} label="Stock IN Batch"
-                value={detail.stockInBatchId ? `#${detail.stockInBatchId}` : 'Not linked'} />
-              <InfoField icon={<FiClock />} label="Uploaded" value={fmtDateTime(detail.uploadedAt)} />
-              <InfoField icon={<FiDollarSign />} label="Currency" value={cur} />
-            </div>
-
-            {/* ── File block ── */}
-            {detail.fileName && (
-              <div style={S.fileBlock}>
-                <div style={S.fileInfo}>
-                  <FiFileText size={18} style={{ color: '#06b6d4' }} />
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: '#1e293b' }}>{detail.fileName}</div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>
-                      {detail.fileMimeType || 'file'}
-                      {detail.fileSize ? ` · ${(detail.fileSize / 1024).toFixed(0)} KB` : ''}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <a href={`/api/qc/invoices/${detail.id}/file`} target="_blank" rel="noreferrer" style={S.fileLink}>
-                    <FiExternalLink size={14} /> Preview
-                  </a>
-                  <button style={S.fileLinkSolid} onClick={() => onDownload(detail.id, detail.fileName)}>
-                    <FiDownload size={14} /> Download
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* ── Line items ── */}
-            <div style={S.itemsHead}>
-              <FiPackage size={15} /> Line Items
-              <span style={S.itemsCount}>{items.length}</span>
-            </div>
-
-            {items.length === 0 ? (
-              <div style={S.noItems}>No line items recorded for this invoice.</div>
-            ) : (
-              <div style={S.itemsTableWrap}>
-                <table style={S.itemsTable}>
-                  <thead>
-                    <tr>
-                      <th style={S.itemTh}>#</th>
-                      <th style={S.itemTh}>Part No</th>
-                      <th style={S.itemTh}>Description</th>
-                      <th style={S.itemTh}>HSN/SAC</th>
-                      <th style={{ ...S.itemTh, textAlign: 'right' }}>Qty</th>
-                      <th style={{ ...S.itemTh, textAlign: 'right' }}>Unit Price</th>
-                      <th style={{ ...S.itemTh, textAlign: 'right' }}>Line Total</th>
-                      <th style={{ ...S.itemTh, textAlign: 'center' }}>Matched</th>
+            </thead>
+            <tbody>
+              {loading && (
+                <tr><td colSpan={8} style={S.msgCell}>
+                  <FiRefreshCw size={20} className="spin" style={{ marginBottom: 10 }} /><div>Loading invoices…</div>
+                </td></tr>
+              )}
+              {!loading && error && (
+                <tr><td colSpan={8} style={S.msgCell}>
+                  <FiAlertTriangle size={26} style={{ color: '#f59e0b', marginBottom: 10 }} />
+                  <div style={{ fontWeight: 700, color: '#475569' }}>Couldn’t load invoices</div>
+                  <div style={{ fontSize: 13, marginTop: 2, fontFamily: MONO, color: '#dc2626', wordBreak: 'break-all', maxWidth: 600, margin: '2px auto 0' }}>{error}</div>
+                  <button style={S.retryBtn} onClick={() => load(q, page, size)}>Try again</button>
+                </td></tr>
+              )}
+              {!loading && !error && sortedRows.length === 0 && (
+                <tr><td colSpan={8} style={S.msgCell}>
+                  <FiInbox size={30} style={{ color: '#cbd5e1', marginBottom: 10 }} />
+                  <div style={{ fontWeight: 700, color: '#475569' }}>No invoices found</div>
+                  <div style={{ fontSize: 13 }}>{filterActive ? 'Try a different search term.' : 'New scanned invoices will appear here.'}</div>
+                </td></tr>
+              )}
+              {!loading && !error && sortedRows.map((inv, ri) => {
+                const ac = avatarColor(inv.supplierName || inv.invoiceNo || '');
+                const v = verifyInvoice(inv);
+                const cat = inv.category || inv.supplierName || '—';
+                const tc = tagColor(cat);
+                const rowKey = inv.id ?? inv.invoiceNo ?? ri;
+                const isExp = expandedId === rowKey;
+                return (
+                  <React.Fragment key={rowKey}>
+                    <tr className="inv-tr" style={S.tr} onClick={() => onOpen(inv)}>
+                      <td style={{ ...S.td, textAlign: 'center' }} onClick={(e) => { e.stopPropagation(); setExpandedId(isExp ? null : rowKey); }}>
+                        <span style={{ ...S.expBtn, ...(isExp ? S.expBtnOn : {}) }}>
+                          <FiChevronDown size={15} style={{ transform: isExp ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+                        </span>
+                      </td>
+                      <td style={S.td}><span style={S.invNo}>{inv.invoiceNo}</span></td>
+                      <td style={S.td}>
+                        <span style={S.supplierCell}>
+                          <span style={{ ...S.avatar, background: `${ac}14`, color: ac }}>{initials(inv.supplierName)}</span>
+                          <span style={S.supplierName}>{inv.supplierName || '—'}</span>
+                        </span>
+                      </td>
+                      <td style={S.td}><span style={{ ...S.catPill, background: tc.bg, color: tc.fg }}>{cat}</span></td>
+                      <td style={S.td}><span style={S.dateCell}>{fmtDate(inv.invoiceDate)}</span></td>
+                      <td style={{ ...S.td, textAlign: 'center' }}><span style={S.itemsBadge}>{inv.itemCount ?? 0}</span></td>
+                      <td style={{ ...S.td, textAlign: 'center' }}>
+                        <span style={{ ...S.statusPill, color: v.color, background: `${v.color}14` }}>
+                          <FiCheckCircle size={12} /> {v.label}
+                        </span>
+                      </td>
+                      <td style={S.td} onClick={(e) => e.stopPropagation()}>
+                        <button style={S.detailsBtn} onClick={() => onOpen(inv)}>
+                          <FiEye size={13} /> Details
+                        </button>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((it, i) => (
-                      <tr key={it.id ?? i}>
-                        <td style={S.itemTd}>{it.slNo ?? i + 1}</td>
-                        <td style={{ ...S.itemTd, fontWeight: 600 }}>{it.partNo || '—'}</td>
-                        <td style={S.itemTd}>{it.description || '—'}</td>
-                        <td style={{ ...S.itemTd, fontFamily: 'monospace', fontSize: 12 }}>{it.hsnSac || '—'}</td>
-                        <td style={{ ...S.itemTd, textAlign: 'right' }}>{it.quantity ?? '—'}</td>
-                        <td style={{ ...S.itemTd, textAlign: 'right' }}>{fmtMoney(it.unitPrice, cur)}</td>
-                        <td style={{ ...S.itemTd, textAlign: 'right', fontWeight: 600 }}>{fmtMoney(it.lineTotal, cur)}</td>
-                        <td style={{ ...S.itemTd, textAlign: 'center' }}>
-                          {it.matchedProductId
-                            ? <span style={S.matched} title={`Product #${it.matchedProductId}`}><FiCheckCircle size={14} /></span>
-                            : <span style={{ color: '#cbd5e1' }}>—</span>}
+                    {isExp && (
+                      <tr style={S.expandRow}>
+                        <td colSpan={8} style={S.expandCell}>
+                          <div style={S.expandGrid}>
+                            <ExpandField label="PO No" value={inv.poNo || '—'} />
+                            <ExpandField label="GSTIN" value={inv.supplierGstin || '—'} mono />
+                            <ExpandField label="Batch" value={inv.stockInBatchId ? `#${inv.stockInBatchId}` : 'Not linked'} mono />
+                            <ExpandField label="File" value={inv.hasFile ? (inv.fileName || 'attached') : 'not attached'} />
+                            <button style={S.expandOpenBtn} onClick={() => onOpen(inv)}>Open full detail <FiChevronRight size={14} /></button>
+                          </div>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td colSpan={4} style={S.footLabel}>Totals</td>
-                      <td style={{ ...S.footCell, textAlign: 'right' }}>{computed.qty}</td>
-                      <td style={S.footCell}></td>
-                      <td style={{ ...S.footCell, textAlign: 'right' }}>{fmtMoney(computed.sum, cur)}</td>
-                      <td style={S.footCell}></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
 
-            {/* ── Grand total ── */}
-            <div style={S.totalBlock}>
-              {Math.abs(computed.sum - num(detail.invoiceTotal)) > 0.01 && num(detail.invoiceTotal) > 0 && (
-                <div style={S.mismatch}>
-                  ⚠ Line items sum ({fmtMoney(computed.sum, cur)}) differs from invoice total
-                </div>
+        {!loading && !error && sortedRows.length > 0 && (
+          <div style={S.footer}>
+            <span style={S.footerRange}>{from}–{to} of {total} invoice{total !== 1 ? 's' : ''}</span>
+
+            <div style={S.footerPager}>
+              <button style={{ ...S.pgIcon, ...(page === 0 ? S.disabled : {}) }} disabled={page === 0} onClick={() => setPage(0)} title="First"><FiChevronsLeft size={15} /></button>
+              <button style={{ ...S.pgIcon, ...(page === 0 ? S.disabled : {}) }} disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))} title="Prev"><FiChevronLeft size={15} /></button>
+              {pageNumbers.map((p, idx) => p === '…'
+                ? <span key={`g${idx}`} style={S.pgGap}>…</span>
+                : <button key={p} onClick={() => setPage(p)} style={{ ...S.pgNum, ...(p === page ? S.pgNumOn : {}) }}>{p + 1}</button>
               )}
-              <div style={S.grandTotal}>
-                <span>Invoice Total</span>
-                <strong>{fmtMoney(total, cur)}</strong>
-              </div>
+              <button style={{ ...S.pgIcon, ...(page >= totalPages - 1 ? S.disabled : {}) }} disabled={page >= totalPages - 1} onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} title="Next"><FiChevronRight size={15} /></button>
+              <button style={{ ...S.pgIcon, ...(page >= totalPages - 1 ? S.disabled : {}) }} disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)} title="Last"><FiChevronsRight size={15} /></button>
+            </div>
+
+            <div style={S.footerGoto}>
+              <span style={S.gotoLabel}>Go to</span>
+              <input style={S.gotoInput} value={goTo} onChange={(e) => setGoTo(e.target.value.replace(/[^0-9]/g, ''))}
+                onKeyDown={(e) => e.key === 'Enter' && submitGoTo()} placeholder={`${page + 1}`} />
+              <span style={S.gotoLabel}>of {totalPages || 1}</span>
             </div>
           </div>
         )}
@@ -457,91 +392,358 @@ const InvoiceDetailModal = ({ detail, loading, onClose, onDownload }) => {
   );
 };
 
+const ExpandField = ({ label, value, mono }) => (
+  <div style={S.expandField}>
+    <div style={S.expandLabel}>{label}</div>
+    <div style={{ ...S.expandValue, ...(mono ? { fontFamily: MONO } : {}) }}>{value}</div>
+  </div>
+);
+
+// ════════════════════════════════════════════════════════════
+//  SCREEN 2 — FULL DETAIL PAGE
+//  ★ Loads by id when present, else by invoice number (/by-no)
+// ════════════════════════════════════════════════════════════
+const DetailScreen = ({ refInfo, onBack, onDownload }) => {
+  const [detail, setDetail] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchDetail = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      let res;
+      if (refInfo?.id != null) {
+        res = await api.get(`/api/qc/invoices/${refInfo.id}`);
+      } else if (refInfo?.invoiceNo) {
+        res = await api.get('/api/qc/invoices/by-no', { params: { no: refInfo.invoiceNo } });
+      } else {
+        setError('This invoice has no ID or invoice number to look up.');
+        setLoading(false);
+        return;
+      }
+      setDetail(res.data);
+    } catch (e) {
+      console.error('Failed to load detail', e);
+      setError(describeError(e));
+    } finally { setLoading(false); }
+  }, [refInfo]);
+
+  useEffect(() => { fetchDetail(); }, [fetchDetail]);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onBack(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onBack]);
+
+  const items = detail?.items || [];
+  const computed = useMemo(() => {
+    const qty = items.reduce((s, it) => s + num(it.quantity), 0);
+    const matched = items.filter(it => it.matchedProductId).length;
+    return { qty, matched };
+  }, [items]);
+
+  const ac = avatarColor(detail?.supplierName || detail?.invoiceNo || '');
+  const v = verifyInvoice(detail || {});
+  const canDownload = detail?.hasFile && detail?.id != null;
+
+  return (
+    <div style={{ animation: 'scrIn .25s ease' }}>
+      <div style={S.detailTopbar}>
+        <button style={S.backBtn} onClick={onBack}><FiArrowLeft size={17} /> All invoices</button>
+        {!loading && !error && detail && (
+          <div style={S.detailTopActions}>
+            {canDownload && (
+              <button style={S.solidBtn} onClick={() => onDownload(detail.id, detail.fileName)}><FiDownload size={14} /> Download</button>
+            )}
+            <button style={S.ghostBtn} onClick={() => window.print()}><FiPrinter size={15} /> Print</button>
+          </div>
+        )}
+      </div>
+
+      {error ? (
+        <div style={S.bigState}>
+          <FiAlertTriangle size={32} style={{ color: '#f59e0b' }} />
+          <div style={{ fontWeight: 700, color: '#475569', fontSize: 15 }}>Couldn’t open this invoice</div>
+          <div style={{ fontSize: 13, fontFamily: MONO, color: '#dc2626', wordBreak: 'break-all', maxWidth: 600, textAlign: 'center' }}>{error}</div>
+          <button style={S.retryBtn} onClick={fetchDetail}>Try again</button>
+        </div>
+      ) : loading ? (
+        <div style={S.bigState}><FiRefreshCw size={26} className="spin" /><span style={{ color: '#94a3b8' }}>Loading invoice…</span></div>
+      ) : (
+        <div id="inv-print">
+          <div style={S.idHeader}>
+            <span style={{ ...S.idAvatar, background: `${ac}14`, color: ac }}>{initials(detail.supplierName)}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={S.idTopline}>
+                <h2 style={S.idInvNo}>{detail.invoiceNo || `Invoice #${detail.id}`}</h2>
+                <span style={{ ...S.statusChip, color: v.color, background: `${v.color}14`, borderColor: `${v.color}33` }}>
+                  <FiShield size={12} /> {v.label}
+                </span>
+              </div>
+              <div style={S.idSupplier}><FiUser size={13} /> {detail.supplierName || 'Unknown supplier'}</div>
+            </div>
+          </div>
+
+          <div style={S.summaryStrip}>
+            <SummaryMini icon={<FiPackage size={16} />} num={items.length} label="line items" />
+            <SummaryMini icon={<FiHash size={16} />} num={computed.qty} label="total qty" />
+            <SummaryMini icon={<FiCheckCircle size={16} />} num={`${computed.matched}/${items.length || 0}`} label="matched" />
+            <SummaryMini icon={<FiLink size={16} />} num={detail.stockInBatchId ? `#${detail.stockInBatchId}` : '—'} label="batch" />
+            <SummaryMini icon={<FiCalendar size={16} />} num={fmtDate(detail.invoiceDate)} label="invoice date" wide />
+          </div>
+
+          <div style={S.ribbon}>
+            <RibbonStep ok={!!detail.hasFile} icon={<FiPaperclip size={14} />}
+              label="Scanned file" detailTxt={detail.hasFile ? (detail.fileName || 'attached') : 'not attached'} />
+            <RibbonArrow />
+            <RibbonStep ok={!!detail.stockInBatchId} icon={<FiLink size={14} />}
+              label="Stock-IN batch" detailTxt={detail.stockInBatchId ? `#${detail.stockInBatchId}` : 'not linked'} />
+            <RibbonArrow />
+            <RibbonStep ok={items.length > 0 && computed.matched === items.length}
+              warn={items.length > 0 && computed.matched > 0 && computed.matched < items.length} icon={<FiPackage size={14} />}
+              label="Line matching" detailTxt={items.length ? `${computed.matched} of ${items.length} matched` : 'no items'} />
+          </div>
+
+          <div style={S.infoGrid}>
+            <InfoField icon={<FiHash />} label="Invoice No" value={detail.invoiceNo} mono />
+            <InfoField icon={<FiCalendar />} label="Invoice Date" value={fmtDate(detail.invoiceDate)} />
+            <InfoField icon={<FiTruck />} label="PO No" value={detail.poNo || '—'} mono />
+            <InfoField icon={<FiUser />} label="Supplier" value={detail.supplierName || '—'} />
+            <InfoField icon={<FiHash />} label="Supplier GSTIN" value={detail.supplierGstin || '—'} mono />
+            <InfoField icon={<FiLink />} label="Stock IN Batch" value={detail.stockInBatchId ? `#${detail.stockInBatchId}` : 'Not linked'} mono />
+            <InfoField icon={<FiClock />} label="Uploaded" value={fmtDateTime(detail.uploadedAt)} />
+          </div>
+
+          {detail.fileName && detail.id != null && (
+            <div style={S.fileBlock}>
+              <div style={S.fileInfo}>
+                <span style={S.fileChip}><FiFileText size={18} /></span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={S.fileName}>{detail.fileName}</div>
+                  <div style={S.fileMeta}>{detail.fileMimeType || 'file'}{detail.fileSize ? ` · ${(detail.fileSize / 1024).toFixed(0)} KB` : ''}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <a href={`/api/qc/invoices/${detail.id}/file`} target="_blank" rel="noreferrer" style={S.fileLink}>
+                  <FiExternalLink size={14} /> Preview
+                </a>
+                <button style={S.fileLinkSolid} onClick={() => onDownload(detail.id, detail.fileName)}>
+                  <FiDownload size={14} /> Download
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div style={S.sectionHead}>
+            <FiPackage size={15} /> Line Items <span style={S.sectionCount}>{items.length}</span>
+          </div>
+
+          {items.length === 0 ? (
+            <div style={S.noItems}>No line items recorded for this invoice.</div>
+          ) : (
+            <div style={S.itemsTableWrap}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={S.itemsTable}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...S.itemTh, width: 36 }}>#</th>
+                      <th style={S.itemTh}>Part No</th>
+                      <th style={S.itemTh}>Description</th>
+                      <th style={S.itemTh}>HSN/SAC</th>
+                      <th style={{ ...S.itemTh, textAlign: 'right' }}>Qty</th>
+                      <th style={{ ...S.itemTh, textAlign: 'center', width: 70 }}>Match</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((it, i) => (
+                      <tr key={it.id ?? i} className="inv-item-row" style={S.itemRow}>
+                        <td style={{ ...S.itemTd, color: '#94a3b8', fontFamily: MONO }}>{it.slNo ?? i + 1}</td>
+                        <td style={{ ...S.itemTd, fontWeight: 700, color: '#0f172a', fontFamily: MONO }}>{it.partNo || '—'}</td>
+                        <td style={S.itemTd}>{it.description || '—'}</td>
+                        <td style={{ ...S.itemTd, fontFamily: MONO, fontSize: 12, color: '#64748b' }}>{it.hsnSac || '—'}</td>
+                        <td style={{ ...S.itemTd, textAlign: 'right', fontFamily: MONO, fontWeight: 700, color: '#0f172a' }}>{it.quantity ?? '—'}</td>
+                        <td style={{ ...S.itemTd, textAlign: 'center' }}>
+                          {it.matchedProductId
+                            ? <span style={S.matched} title={`Product #${it.matchedProductId}`}><FiCheckCircle size={15} /></span>
+                            : <span style={S.unmatched} title="No product match">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={S.itemsFoot}>
+                <span>Total line items: <strong>{items.length}</strong></span>
+                <span>Total quantity: <strong style={{ fontFamily: MONO }}>{computed.qty}</strong></span>
+              </div>
+            </div>
+          )}
+          <div style={{ height: 40 }} />
+        </div>
+      )}
+    </div>
+  );
+};
+
+const SummaryMini = ({ icon, num: n, label, wide }) => (
+  <div style={{ ...S.sumMini, ...(wide ? { flex: '1.4 1 0' } : {}) }}>
+    <span style={S.sumIcon}>{icon}</span>
+    <div style={{ minWidth: 0 }}>
+      <div style={S.sumNum}>{n}</div>
+      <div style={S.sumLabel}>{label}</div>
+    </div>
+  </div>
+);
+const RibbonStep = ({ ok, warn, icon, label, detailTxt }) => {
+  const color = ok ? '#16a34a' : warn ? '#d97706' : '#94a3b8';
+  const bg = ok ? '#ecfdf5' : warn ? '#fffbeb' : '#f8fafc';
+  return (
+    <div style={S.ribbonStep}>
+      <span style={{ ...S.ribbonIcon, color, background: bg, borderColor: `${color}33` }}>{icon}</span>
+      <div style={{ minWidth: 0 }}>
+        <div style={S.ribbonLabel}>{label}</div>
+        <div style={{ ...S.ribbonDetail, color }}>{detailTxt}</div>
+      </div>
+    </div>
+  );
+};
+const RibbonArrow = () => <span style={S.ribbonArrow}>›</span>;
 const InfoField = ({ icon, label, value, mono }) => (
   <div style={S.infoField}>
     <div style={S.infoLabel}>{icon} {label}</div>
-    <div style={{ ...S.infoValue, ...(mono ? { fontFamily: 'monospace', fontSize: 13 } : {}) }}>{value}</div>
+    <div style={{ ...S.infoValue, ...(mono ? { fontFamily: MONO, fontSize: 13.5 } : {}) }}>{value}</div>
   </div>
 );
 
 // ════════════════════════════════════════════════════════════
 //  STYLES
 // ════════════════════════════════════════════════════════════
+const FONT = "'Inter','IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
+const MONO = "'IBM Plex Mono','SF Mono','Roboto Mono',monospace";
+const HEADER_BG = '#1e293b';
+
 const S = {
-  wrap: { padding: '4px 2px' },
-  head: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 18 },
-  titleBox: { display: 'flex', alignItems: 'center', gap: 12 },
-  titleIcon: { width: 40, height: 40, borderRadius: 10, background: 'rgba(6,182,212,0.12)', color: '#06b6d4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  title: { margin: 0, fontSize: 20, fontWeight: 700, color: '#0f172a' },
-  sub: { fontSize: 13, color: '#64748b' },
-  headActions: { display: 'flex', gap: 8, alignItems: 'center' },
-  ghostBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 9, padding: '7px 14px', fontSize: 13, fontWeight: 600, color: '#334155', cursor: 'pointer' },
-  iconBtn: { background: '#f1f5f9', border: 'none', borderRadius: 8, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', cursor: 'pointer' },
+  page: { fontFamily: FONT, color: '#0f172a' },
 
-  statRow: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 18 },
-  statCard: { display: 'flex', alignItems: 'center', gap: 12, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '14px 16px' },
-  statIcon: { width: 38, height: 38, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  statValue: { fontSize: 18, fontWeight: 700, color: '#0f172a', lineHeight: 1.2 },
-  statLabel: { fontSize: 12, color: '#64748b' },
+  banner: { position: 'relative', borderRadius: 16, overflow: 'hidden', marginBottom: 14, background: '#fff', border: '1px solid #e6e8ee', boxShadow: '0 1px 3px rgba(15,23,42,0.05)' },
+  bannerSheen: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg,#6366f1,#0ea5e9,#10b981,#f59e0b)' },
+  bannerInner: { display: 'flex', alignItems: 'center', gap: 14, padding: '16px 22px' },
+  bannerIcon: { width: 46, height: 46, borderRadius: 13, background: 'linear-gradient(135deg,#f59e0b,#f97316)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 12px rgba(249,115,22,0.3)' },
+  bannerTitle: { margin: 0, fontSize: 21, fontWeight: 800, letterSpacing: '-0.02em', color: '#0f172a' },
+  bannerSub: { fontSize: 13, color: '#94a3b8', fontWeight: 500 },
 
-  filterBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 },
-  searchBox: { display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '6px 10px' },
-  searchInput: { border: 'none', outline: 'none', fontSize: 14, width: 240, color: '#0f172a' },
-  searchBtn: { background: '#1e3a8a', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
-  dateFilter: { display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '6px 12px' },
-  dateLabel: { fontSize: 12, color: '#64748b', fontWeight: 600 },
-  dateInput: { border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 8px', fontSize: 13, color: '#334155' },
-  clearBtn: { background: 'none', border: 'none', color: '#ef4444', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  card: { background: '#fff', border: '1px solid #e6e8ee', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 3px rgba(15,23,42,0.05)' },
+  cardHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 18px', borderBottom: '1px solid #eef2f7', flexWrap: 'wrap' },
+  cardHeadLeft: { display: 'flex', alignItems: 'center', gap: 10 },
+  cubeIcon: { width: 30, height: 30, borderRadius: 9, background: '#eef2ff', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  cardTitle: { fontSize: 16, fontWeight: 800, color: '#0f172a' },
+  resultCount: { fontSize: 13, color: '#94a3b8', fontWeight: 600 },
+  cardHeadRight: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  searchBox: { display: 'flex', alignItems: 'center', gap: 7, background: '#f8fafc', border: '1px solid #e6e8ee', borderRadius: 9, padding: '6px 10px', minWidth: 200 },
+  searchInput: { flex: 1, border: 'none', outline: 'none', fontSize: 13, color: '#0f172a', fontFamily: FONT, background: 'transparent', minWidth: 0 },
+  clearX: { width: 20, height: 20, borderRadius: 5, border: 'none', background: '#e2e8f0', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
+  ctrlLabel: { fontSize: 11, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em' },
+  selWrap: { position: 'relative', display: 'flex', alignItems: 'center' },
+  select: { appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', padding: '6px 24px 6px 10px', fontSize: 13, fontWeight: 600, color: '#334155', cursor: 'pointer', fontFamily: FONT, outline: 'none' },
+  selChevron: { position: 'absolute', right: 8, color: '#94a3b8', pointerEvents: 'none' },
+  dirBtn: { width: 32, height: 32, borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
+  refreshBtn: { width: 32, height: 32, borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
 
-  card: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 14 },
-  th: { textAlign: 'left', padding: '12px 14px', fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' },
+  table: { width: '100%', borderCollapse: 'collapse', fontFamily: FONT, minWidth: 940 },
+  th: { textAlign: 'left', padding: '12px 16px', fontSize: 11, fontWeight: 700, color: '#cbd5e1', textTransform: 'uppercase', letterSpacing: '0.05em', background: HEADER_BG, whiteSpace: 'nowrap' },
+  thSort: { textAlign: 'left', padding: '12px 16px', fontSize: 11, fontWeight: 700, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.05em', background: HEADER_BG, whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' },
+  thInner: { display: 'inline-flex', alignItems: 'center', gap: 5 },
+
   tr: { cursor: 'pointer', borderBottom: '1px solid #f1f5f9' },
-  td: { padding: '12px 14px', color: '#1e293b' },
-  cellMuted: { display: 'inline-flex', alignItems: 'center', gap: 6, color: '#475569' },
-  badge: { display: 'inline-block', minWidth: 24, padding: '2px 8px', borderRadius: 12, background: '#e0f2fe', color: '#0369a1', fontSize: 12, fontWeight: 600 },
-  linkBadge: { display: 'inline-block', padding: '2px 8px', borderRadius: 12, background: '#f3e8ff', color: '#7c3aed', fontSize: 12, fontWeight: 600 },
-  unlinked: { color: '#cbd5e1' },
-  actBtn: { background: '#eff6ff', color: '#1e3a8a', border: 'none', borderRadius: 7, width: 30, height: 30, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', margin: '0 2px' },
-  empty: { padding: '40px', textAlign: 'center', color: '#94a3b8' },
+  td: { padding: '14px 16px', fontSize: 13.5, color: '#475569', verticalAlign: 'middle' },
+  expBtn: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b', cursor: 'pointer' },
+  expBtnOn: { borderColor: '#c7d2fe', background: '#eef2ff', color: '#4f46e5' },
+  invNo: { fontSize: 13.5, fontWeight: 700, color: '#4f46e5', fontFamily: MONO, whiteSpace: 'nowrap' },
+  supplierCell: { display: 'inline-flex', alignItems: 'center', gap: 10, minWidth: 0 },
+  avatar: { width: 30, height: 30, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11.5, fontWeight: 800, flexShrink: 0, letterSpacing: '-0.02em' },
+  supplierName: { fontSize: 13, fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 },
+  catPill: { display: 'inline-block', padding: '3px 11px', borderRadius: 8, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' },
+  dateCell: { fontSize: 13, color: '#475569', fontWeight: 600, whiteSpace: 'nowrap' },
+  itemsBadge: { display: 'inline-block', minWidth: 30, padding: '3px 10px', borderRadius: 8, background: '#f0fdf4', color: '#16a34a', fontSize: 12.5, fontWeight: 700, fontFamily: MONO },
+  statusPill: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' },
+  detailsBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 13px', fontSize: 12.5, fontWeight: 700, color: '#475569', cursor: 'pointer' },
 
-  pager: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 16 },
-  pageBtn: { display: 'inline-flex', alignItems: 'center', gap: 4, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 600, color: '#1e3a8a', cursor: 'pointer' },
-  disabled: { opacity: 0.45, cursor: 'not-allowed' },
-  pageInfo: { fontSize: 13, color: '#64748b' },
+  expandRow: { background: '#f8fafc' },
+  expandCell: { padding: '0 16px 16px 60px', borderBottom: '1px solid #f1f5f9' },
+  expandGrid: { display: 'flex', alignItems: 'flex-end', gap: 28, flexWrap: 'wrap', background: '#fff', border: '1px solid #eef2f7', borderRadius: 12, padding: '14px 18px' },
+  expandField: { display: 'flex', flexDirection: 'column', gap: 3 },
+  expandLabel: { fontSize: 10.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' },
+  expandValue: { fontSize: 13.5, fontWeight: 700, color: '#1e293b' },
+  expandOpenBtn: { marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 9, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' },
 
-  // modal
-  overlay: { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', zIndex: 1000, overflowY: 'auto' },
-  modal: { background: '#fff', borderRadius: 16, width: '100%', maxWidth: 900, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' },
-  modalHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 22px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' },
-  modalTitleBox: { display: 'flex', alignItems: 'center', gap: 12 },
-  modalTitle: { margin: 0, fontSize: 18, fontWeight: 700, color: '#0f172a' },
-  modalBody: { padding: 22, maxHeight: '70vh', overflowY: 'auto' },
+  msgCell: { padding: '60px 20px', textAlign: 'center', color: '#94a3b8', fontSize: 14 },
+  retryBtn: { marginTop: 14, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 9, padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
 
-  infoGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 20 },
-  infoField: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px' },
-  infoLabel: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', marginBottom: 4 },
-  infoValue: { fontSize: 14, fontWeight: 600, color: '#1e293b', wordBreak: 'break-word' },
+  footer: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '14px 18px', borderTop: '1px solid #eef2f7', background: '#fafbfc', flexWrap: 'wrap' },
+  footerRange: { fontSize: 13, color: '#4f46e5', fontWeight: 600 },
+  footerPager: { display: 'flex', alignItems: 'center', gap: 5 },
+  pgIcon: { width: 32, height: 32, borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+  pgNum: { minWidth: 32, height: 32, borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: MONO },
+  pgNumOn: { background: '#4f46e5', borderColor: '#4f46e5', color: '#fff' },
+  pgGap: { minWidth: 22, textAlign: 'center', color: '#cbd5e1', fontWeight: 700, userSelect: 'none' },
+  disabled: { opacity: 0.4, cursor: 'not-allowed' },
+  footerGoto: { display: 'flex', alignItems: 'center', gap: 7 },
+  gotoLabel: { fontSize: 12.5, color: '#64748b', fontWeight: 600 },
+  gotoInput: { width: 52, textAlign: 'center', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 8px', fontSize: 13, fontWeight: 700, color: '#0f172a', fontFamily: MONO, outline: 'none' },
 
-  fileBlock: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 12, padding: '12px 16px', marginBottom: 20 },
-  fileInfo: { display: 'flex', alignItems: 'center', gap: 12 },
-  fileLink: { display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontWeight: 600, color: '#0369a1', textDecoration: 'none' },
-  fileLinkSolid: { display: 'inline-flex', alignItems: 'center', gap: 6, background: '#06b6d4', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer' },
+  detailTopbar: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' },
+  backBtn: { display: 'inline-flex', alignItems: 'center', gap: 7, background: '#fff', border: '1px solid #e6e8ee', borderRadius: 11, padding: '9px 16px 9px 12px', fontSize: 13.5, fontWeight: 700, color: '#334155', cursor: 'pointer', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' },
+  detailTopActions: { display: 'flex', gap: 8 },
+  solidBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
+  ghostBtn: { display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid #e6e8ee', borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 700, color: '#475569', cursor: 'pointer', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' },
 
-  itemsHead: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 10 },
-  itemsCount: { background: '#e0f2fe', color: '#0369a1', borderRadius: 12, padding: '1px 9px', fontSize: 12 },
-  noItems: { padding: '24px', textAlign: 'center', color: '#94a3b8', background: '#f8fafc', borderRadius: 10, fontSize: 13 },
-  itemsTableWrap: { border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' },
-  itemsTable: { width: '100%', borderCollapse: 'collapse' },
-  itemTh: { textAlign: 'left', padding: '9px 12px', fontSize: 11, fontWeight: 600, color: '#64748b', background: '#f1f5f9', textTransform: 'uppercase' },
-  itemTd: { padding: '9px 12px', fontSize: 13, color: '#334155', borderTop: '1px solid #f1f5f9' },
-  matched: { color: '#10b981', display: 'inline-flex' },
-  footLabel: { padding: '10px 12px', fontSize: 12, fontWeight: 700, color: '#475569', background: '#f8fafc', textAlign: 'right', textTransform: 'uppercase' },
-  footCell: { padding: '10px 12px', fontSize: 13, fontWeight: 700, color: '#1e293b', background: '#f8fafc', borderTop: '2px solid #e2e8f0' },
+  bigState: { display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', justifyContent: 'center', padding: '100px 20px', fontSize: 14 },
 
-  totalBlock: { marginTop: 18, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 },
-  mismatch: { fontSize: 12, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '6px 12px' },
-  grandTotal: { display: 'flex', alignItems: 'center', gap: 16, background: '#1e3a8a', color: '#fff', borderRadius: 10, padding: '12px 22px', fontSize: 16 },
+  idHeader: { display: 'flex', alignItems: 'center', gap: 16, background: '#fff', border: '1px solid #e6e8ee', borderRadius: 16, padding: '20px 22px', marginBottom: 14, boxShadow: '0 1px 3px rgba(15,23,42,0.05)' },
+  idAvatar: { width: 56, height: 56, borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, fontWeight: 800, flexShrink: 0, letterSpacing: '-0.02em' },
+  idTopline: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  idInvNo: { margin: 0, fontSize: 22, fontWeight: 800, color: '#0f172a', fontFamily: MONO, letterSpacing: '-0.01em' },
+  idSupplier: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: '#64748b', fontWeight: 600, marginTop: 4 },
+  statusChip: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 20, border: '1px solid', fontSize: 12.5, fontWeight: 700 },
+
+  summaryStrip: { display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' },
+  sumMini: { flex: '1 1 0', minWidth: 130, display: 'flex', alignItems: 'center', gap: 11, background: '#fff', border: '1px solid #e6e8ee', borderRadius: 13, padding: '13px 16px', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' },
+  sumIcon: { width: 38, height: 38, borderRadius: 10, background: '#eef2ff', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  sumNum: { fontSize: 16, fontWeight: 800, color: '#0f172a', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  sumLabel: { fontSize: 11.5, color: '#94a3b8', fontWeight: 600 },
+
+  ribbon: { display: 'flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid #e6e8ee', borderRadius: 14, padding: '14px 16px', marginBottom: 14, overflowX: 'auto', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' },
+  ribbonStep: { display: 'flex', alignItems: 'center', gap: 9, flexShrink: 0 },
+  ribbonIcon: { width: 30, height: 30, borderRadius: 9, border: '1px solid', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  ribbonLabel: { fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap' },
+  ribbonDetail: { fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis' },
+  ribbonArrow: { color: '#cbd5e1', fontSize: 18, fontWeight: 700, flexShrink: 0, padding: '0 2px' },
+
+  infoGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12, marginBottom: 14 },
+  infoField: { background: '#fff', border: '1px solid #e6e8ee', borderRadius: 12, padding: '12px 15px', boxShadow: '0 1px 3px rgba(15,23,42,0.03)' },
+  infoLabel: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 5 },
+  infoValue: { fontSize: 14, fontWeight: 700, color: '#1e293b', wordBreak: 'break-word' },
+
+  fileBlock: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 14, padding: '15px 18px', marginBottom: 18 },
+  fileInfo: { display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 },
+  fileChip: { width: 42, height: 42, borderRadius: 12, background: '#fff', color: '#0ea5e9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  fileName: { fontWeight: 700, fontSize: 14, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  fileMeta: { fontSize: 12, color: '#64748b', marginTop: 1 },
+  fileLink: { display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid #bae6fd', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 700, color: '#0369a1', textDecoration: 'none' },
+  fileLinkSolid: { display: 'inline-flex', alignItems: 'center', gap: 6, background: '#0ea5e9', border: 'none', borderRadius: 9, padding: '8px 14px', fontSize: 13, fontWeight: 700, color: '#fff', cursor: 'pointer' },
+
+  sectionHead: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 12 },
+  sectionCount: { background: '#eef2ff', color: '#6366f1', borderRadius: 20, padding: '1px 10px', fontSize: 12, fontWeight: 700 },
+  noItems: { padding: '30px', textAlign: 'center', color: '#94a3b8', background: '#fff', border: '1px dashed #e2e8f0', borderRadius: 14, fontSize: 13 },
+
+  itemsTableWrap: { background: '#fff', border: '1px solid #e6e8ee', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' },
+  itemsTable: { width: '100%', borderCollapse: 'collapse', minWidth: 560 },
+  itemTh: { textAlign: 'left', padding: '11px 14px', fontSize: 11, fontWeight: 700, color: '#cbd5e1', background: HEADER_BG, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' },
+  itemRow: { transition: 'background .1s' },
+  itemTd: { padding: '12px 14px', fontSize: 13, color: '#475569', borderTop: '1px solid #f1f5f9' },
+  matched: { color: '#16a34a', display: 'inline-flex' },
+  unmatched: { color: '#cbd5e1' },
+  itemsFoot: { display: 'flex', gap: 24, padding: '13px 16px', borderTop: '2px solid #eef2f7', background: '#fafbfc', fontSize: 13, color: '#64748b', fontWeight: 600 },
 };
 
 export default Invoices;

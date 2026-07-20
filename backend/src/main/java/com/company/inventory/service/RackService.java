@@ -21,32 +21,40 @@ public class RackService {
 
     @Transactional(readOnly = true)
     public List<Rack> getAllRacks() {
-        log.debug("Querying data schema table structures to list all existing racks records.");
         return rackRepository.findAll();
     }
 
     @Transactional(readOnly = true)
     public List<Rack> getActiveRacks() {
-        log.debug("Filtering database elements mapping exclusively active physical storage structures.");
         return rackRepository.findByIsActiveTrue();
     }
 
     @Transactional(readOnly = true)
     public Rack getRackById(Long id) {
-        log.debug("Looking up target profile definitions for physical storage entity node ID: {}", id);
         return rackRepository.findById(id)
-                .orElseThrow(() -> {
-                    log.error("Rack resource indexing lookup fault matching specified target identification tag: {}", id);
-                    return new ResourceNotFoundException("Rack not found with id: " + id);
-                });
+                .orElseThrow(() -> new ResourceNotFoundException("Rack not found with id: " + id));
+    }
+
+    // AUTO-GENERATE: scans all racks (incl. soft-deleted, since rack_number is
+    // globally unique) for pattern R<n>, returns R<max+1>.
+    private String generateNextRackNumber() {
+        int max = 0;
+        for (Rack r : rackRepository.findAll()) {
+            String num = r.getRackNumber();
+            if (num != null && num.matches("R\\d+")) {
+                max = Math.max(max, Integer.parseInt(num.substring(1)));
+            }
+        }
+        return "R" + (max + 1);
     }
 
     @Transactional
     public Rack createRack(String rackNumber, String rackName, String location, Integer capacity, User currentUser) {
-        log.info("Attempting allocation registration execution sequence for new functional entity. Identifier: '{}', Designation: '{}'", rackNumber, rackName);
-
-        if (rackRepository.existsByRackNumber(rackNumber)) {
-            log.error("Aborting storage creation: Identification reference alphanumeric sequence code '{}' conflicts with an active row component.", rackNumber);
+        // CHANGED: rackNumber is now optional — auto-generated when blank
+        if (rackNumber == null || rackNumber.isBlank()) {
+            rackNumber = generateNextRackNumber();
+            log.info("Auto-generated rack number: {}", rackNumber);
+        } else if (rackRepository.existsByRackNumber(rackNumber)) {
             throw new DuplicateResourceException("Rack number already exists: " + rackNumber);
         }
 
@@ -58,18 +66,19 @@ public class RackService {
         rack.setIsActive(true);
         rack.setCreatedBy(currentUser);
 
-        Rack savedRack = rackRepository.save(rack);
-        log.info("New spatial hardware framework tracking configuration registered inside master schemas database. Auto ID assigned: {}", savedRack.getRackId());
-        return savedRack;
+        return rackRepository.save(rack);
     }
 
     @Transactional
     public Rack updateRack(Long id, String rackNumber, String rackName, String location, Integer capacity) {
-        log.info("Processing proposed mutation data updates overlay against existing layout container target tracking reference ID: {}", id);
         Rack rack = getRackById(id);
 
+        // CHANGED: blank rackNumber on update = keep existing number
+        if (rackNumber == null || rackNumber.isBlank()) {
+            rackNumber = rack.getRackNumber();
+        }
+
         if (!rack.getRackNumber().equals(rackNumber) && rackRepository.existsByRackNumber(rackNumber)) {
-            log.error("Aborting storage modification pipeline: Alphanumeric sequence update configuration '{}' overlaps another data item row.", rackNumber);
             throw new DuplicateResourceException("Rack number already exists: " + rackNumber);
         }
 
@@ -78,23 +87,18 @@ public class RackService {
         rack.setLocation(location);
         rack.setCapacity(capacity);
 
-        Rack updatedRack = rackRepository.save(rack);
-        log.info("Properties mutation parameters updated successfully against schema indices configuration tracker node ID: {}", id);
-        return updatedRack;
+        return rackRepository.save(rack);
     }
 
     @Transactional
     public void deleteRack(Long id) {
-        log.warn("Triggering storage soft deletion decommissioning pipeline logic operations against container profile item node ID: {}", id);
         Rack rack = getRackById(id);
         rack.setIsActive(false);
         rackRepository.save(rack);
-        log.info("Soft-decommission process status update flag handled successfully on target node index context: {}. [isActive=false]", id);
     }
 
     @Transactional
     public void initializeDefaultRacks(User systemUser) {
-        log.info("Evaluating configuration profiles layer verification: Verification checkpoint on default baseline storage racks layout matrices setup configurations.");
         String[][] defaultRacks = {
             {"R1", "Components Rack", "Zone A", "100"},
             {"R2", "PCBA Rack", "Zone B", "50"},
@@ -104,10 +108,8 @@ public class RackService {
 
         for (String[] rackData : defaultRacks) {
             if (!rackRepository.existsByRackNumber(rackData[0])) {
-                log.info("Seeding data row allocation placeholder into database layers index configuration mapping for: '{}'", rackData[1]);
                 createRack(rackData[0], rackData[1], rackData[2], Integer.parseInt(rackData[3]), systemUser);
             }
         }
-        log.info("Operational hardware initialization verification complete. Seed arrays loaded neatly inside schemas execution thread paths.");
     }
 }

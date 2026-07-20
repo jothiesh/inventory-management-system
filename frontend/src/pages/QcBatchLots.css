@@ -1,0 +1,235 @@
+/* ══════════════════════════════════════════════════════
+   QC BATCH LOTS — expandable "full Stock IN data" panel
+   Shown when a row is clicked on Queue / Approved /
+   Rejected / History. Mirrors InvoiceBill in StockIn.jsx.
+   ══════════════════════════════════════════════════════ */
+
+.qbl-wrap {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px 12px;
+  margin: 4px 0;
+  animation: qblIn 0.18s ease both;
+}
+@keyframes qblIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Head ── */
+.qbl-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.qbl-head svg { color: #4f46e5; flex-shrink: 0; }
+.qbl-head-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #1e293b;
+  letter-spacing: 0.2px;
+}
+.qbl-head-meta {
+  font-size: 11px;
+  color: #64748b;
+  margin-left: auto;
+}
+
+/* ── Loading / error / empty ── */
+.qbl-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 22px;
+  color: #64748b;
+  font-size: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  margin: 4px 0;
+}
+.qbl-state-err {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+.qbl-state-err svg { color: #dc2626; }
+.qbl-spin { animation: qbl-spin-anim 0.7s linear infinite; }
+@keyframes qbl-spin-anim { to { transform: rotate(360deg); } }
+
+/* ── Table ── */
+.qbl-table-wrap {
+  overflow-x: auto;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.qbl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.qbl-table thead tr { background: #1e293b; }
+.qbl-table th {
+  padding: 7px 9px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #cbd5e1;
+  text-align: left;
+  white-space: nowrap;
+}
+.qbl-table td {
+  padding: 7px 9px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+  vertical-align: middle;
+}
+.qbl-row:last-child td { border-bottom: none; }
+.qbl-row:hover td { background: #f8fafc; }
+.qbl-r { text-align: right; }
+
+.qbl-num   { color: #94a3b8; font-weight: 700; }
+.qbl-faded { color: #94a3b8; }
+.qbl-mono {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: #4f46e5;
+}
+.qbl-mono-num { font-family: 'Courier New', monospace; }
+.qbl-qty   { font-weight: 800; color: #0f172a; }
+.qbl-total { font-weight: 800; color: #065f46; }
+
+.qbl-clip {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qbl-chip {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #eef2ff;
+  color: #4f46e5;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.qbl-lotno {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  color: #64748b;
+}
+
+/* Location — the field QC needs most and never had */
+.qbl-loc {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+  font-size: 10px;
+  font-weight: 700;
+}
+.qbl-loc svg { flex-shrink: 0; }
+
+.qbl-gst {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
+}
+.qbl-gst-pct { font-size: 9px; font-weight: 700; color: #1e40af; }
+.qbl-gst-amt { font-size: 9px; color: #64748b; }
+
+.qbl-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+/* ── Totals ── */
+.qbl-totals {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+.qbl-totals-card {
+  min-width: 230px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.qbl-total-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 3px 0;
+  font-size: 11px;
+  color: #64748b;
+}
+.qbl-total-row strong { color: #1e293b; font-weight: 800; }
+.qbl-grand {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1.5px solid #e2e8f0;
+  font-size: 12px;
+}
+.qbl-grand span   { font-weight: 700; color: #1e293b; }
+.qbl-grand strong { color: #4f46e5; font-size: 13px; }
+
+/* ══════════════════════════════════════════════════════
+   ROW EXPANSION — shared by every QC list page
+   ══════════════════════════════════════════════════════ */
+
+/* clickable parent row */
+.qbl-clickable { cursor: pointer; }
+.qbl-clickable:hover { background: #f8fafc; }
+.qbl-open { background: #eef2ff !important; }
+.qbl-open td { border-bottom-color: #c7d2fe; }
+
+/* chevron in the first cell */
+.qbl-chev {
+  color: #94a3b8;
+  transition: transform 0.18s, color 0.18s;
+  flex-shrink: 0;
+}
+.qbl-chev-open { transform: rotate(90deg); color: #4f46e5; }
+
+.qbl-expand-cell {
+  width: 26px;
+  text-align: center;
+  padding-left: 6px !important;
+  padding-right: 0 !important;
+}
+
+/* the detail <tr> */
+.qbl-detail-row td {
+  padding: 0 8px 8px !important;
+  background: #f1f5f9;
+  border-bottom: 2px solid #e2e8f0 !important;
+}
+
+@media (max-width: 900px) {
+  .qbl-clip { max-width: 140px; }
+  .qbl-totals-card { min-width: 100%; }
+}

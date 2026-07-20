@@ -9,7 +9,7 @@ import {
   FiChevronLeft, FiChevronRight, FiClipboard,
   FiCheckSquare, FiAward, FiActivity,
   FiCheckCircle, FiXCircle, FiClock,
-  FiFileText, FiSend,
+  FiFileText, FiSend, FiTruck,
 } from 'react-icons/fi';
 import './MainLayout.css';
 
@@ -46,7 +46,7 @@ const MainLayout = () => {
 
   // QC alert badge (QC + OWNER + STORE_MANAGER)
   useEffect(() => {
-    if (![ROLES.QC, ROLES.OWNER, ROLES.STORE_MANAGER].includes(role)) return;
+    if (![ROLES.QC, ROLES.OWNER].includes(role)) return;
     const load = async () => {
       try {
         const { qcApi } = await import('../api/qcApi');
@@ -96,7 +96,7 @@ const MainLayout = () => {
         { path: '/categories', label: 'Categories',    icon: <FiGrid size={18}/>,    color: '#8b5cf6', roles: [ROLES.OWNER, ROLES.STORE_MANAGER] },
         { path: '/products',   label: 'Products',      icon: <FiPackage size={18}/>, color: '#6366f1', roles: [ROLES.OWNER, ROLES.STORE_MANAGER] },
         { path: '/racks',      label: 'Racks & Boxes', icon: <FiBox size={18}/>,     color: '#0ea5e9', roles: [ROLES.OWNER, ROLES.STORE_MANAGER] },
-        { path: '/suppliers',  label: 'Suppliers',     icon: <FiUsers size={18}/>,   color: '#14b8a6', roles: [ROLES.OWNER, ROLES.STORE_MANAGER] },
+        { path: '/suppliers',  label: 'Suppliers',     icon: <FiUsers size={18}/>,   color: '#14b8a6', roles: [ROLES.OWNER, ROLES.STORE_MANAGER, ROLES.QC] },
       ],
     },
 
@@ -107,7 +107,7 @@ const MainLayout = () => {
         {
           path: '/purchase-requests', label: 'Purchase Requests',
           icon: <FiClipboard size={18}/>, color: '#f59e0b',
-          roles: [ROLES.OWNER, ROLES.STORE_MANAGER],
+          roles: [ROLES.OWNER, ROLES.STORE_MANAGER, ROLES.QC],
         },
       ],
     },
@@ -120,7 +120,9 @@ const MainLayout = () => {
         { path: '/stock-out',         label: 'Stock OUT',         icon: <FiTrendingDown size={18}/>, color: '#ef4444', roles: [ROLES.OWNER, ROLES.STORE_MANAGER] },
         { path: '/stock-out/history', label: 'Stock OUT History', icon: <FiClock size={18}/>,        color: '#f97316', roles: [ROLES.OWNER, ROLES.STORE_MANAGER] },
         { path: '/invoices',          label: 'Invoices',          icon: <FiFileText size={18}/>,     color: '#f59e0b', roles: [ROLES.OWNER, ROLES.STORE_MANAGER, ROLES.QC] },
-        { path: '/delivery-challan',  label: 'Delivery Challan',  icon: <FiFileText size={18}/>,     color: '#06b6d4', roles: [ROLES.OWNER, ROLES.STORE_MANAGER] },
+        // ── Delivery Challan (Job Work) ──
+        { path: '/delivery-challan',  label: 'New Delivery Challan', icon: <FiFileText size={18}/>,  color: '#06b6d4', roles: [ROLES.OWNER, ROLES.STORE_MANAGER] },
+        { path: '/delivery-challans', label: 'Delivery Challans',    icon: <FiTruck size={18}/>,     color: '#0284c7', roles: [ROLES.OWNER, ROLES.STORE_MANAGER] },
         { path: '/current-stock',     label: 'Current Stock',     icon: <FiLayers size={18}/>,       color: '#3b82f6', roles: [ROLES.OWNER, ROLES.STORE_MANAGER] },
       ],
     },
@@ -130,7 +132,7 @@ const MainLayout = () => {
       label: 'Reports & Alerts',
       items: [
         { path: '/alerts',       label: 'Alerts',       icon: <FiBell size={18}/>,      color: '#ef4444', roles: [ROLES.OWNER],             badge: unreadCount },
-        { path: '/reports',      label: 'Reports',      icon: <FiBarChart2 size={18}/>, color: '#8b5cf6', roles: [ROLES.OWNER] },
+        { path: '/reports',      label: 'Reports',      icon: <FiBarChart2 size={18}/>, color: '#8b5cf6', roles: [ROLES.OWNER, ROLES.STORE_MANAGER] },
         { path: '/excel-import', label: 'Import Excel', icon: <FiUpload size={18}/>,    color: '#22c55e', roles: [ROLES.OWNER, ROLES.STORE_MANAGER] },
       ],
     },
@@ -139,8 +141,8 @@ const MainLayout = () => {
     {
       label: 'QC Overview',
       items: [
-        { path: '/qc/dashboard', label: 'QC Dashboard', icon: <FiBarChart2 size={18}/>, color: '#0ea5e9', roles: [ROLES.OWNER, ROLES.STORE_MANAGER, ROLES.QC] },
-        { path: '/qc/alerts',    label: 'QC Alerts',    icon: <FiBell size={18}/>,      color: '#f59e0b', roles: [ROLES.OWNER, ROLES.STORE_MANAGER, ROLES.QC], badge: qcUnreadCount },
+        { path: '/qc/dashboard', label: 'QC Dashboard', icon: <FiBarChart2 size={18}/>, color: '#0ea5e9', roles: [ROLES.OWNER, ROLES.QC] },
+        { path: '/qc/alerts',    label: 'QC Alerts',    icon: <FiBell size={18}/>,      color: '#f59e0b', roles: [ROLES.OWNER, ROLES.QC], badge: qcUnreadCount },
       ],
     },
 
@@ -159,7 +161,11 @@ const MainLayout = () => {
       items: [
         { path: '/qc/approved', label: 'Approved', icon: <FiCheckCircle size={18}/>, color: '#10b981', roles: [ROLES.OWNER, ROLES.STORE_MANAGER, ROLES.QC] },
         { path: '/qc/rejected', label: 'Rejected', icon: <FiXCircle size={18}/>,     color: '#ef4444', roles: [ROLES.OWNER, ROLES.STORE_MANAGER, ROLES.QC] },
-        { path: '/qc/return-challans', label: 'Return Challans', icon: <FiSend size={18}/>, color: '#dc2626', roles: [ROLES.OWNER, ROLES.STORE_MANAGER] },
+        // ★ FIX: added ROLES.QC — the QC role could not see Return Challans in the
+        //   sidebar even though the backend controller already allows QC
+        //   (hasAnyAuthority('OWNER','STORE_MANAGER','QC')). Menu link was the
+        //   only thing hidden.
+        { path: '/qc/return-challans', label: 'Return Challans', icon: <FiSend size={18}/>, color: '#dc2626', roles: [ROLES.OWNER, ROLES.STORE_MANAGER, ROLES.QC] },
       ],
     },
 
@@ -356,7 +362,8 @@ function getPageTitle(pathname) {
     '/stock-out/history':     'Stock OUT History',
     '/invoices':              'Purchase Invoices',
     '/current-stock':         'Current Stock',
-    '/delivery-challan':      'Delivery Challan',
+    '/delivery-challan':      'New Delivery Challan',
+    '/delivery-challans':     'Delivery Challans',
     '/alerts':                'Alerts',
     '/reports':               'Reports',
     '/excel-import':          'Import Excel',
@@ -373,6 +380,8 @@ function getPageTitle(pathname) {
   if (pathname.startsWith('/qc/batches/'))              return 'QC Batch Inspection';
   if (pathname.startsWith('/qc/return-challans/') &&
       pathname !== '/qc/return-challans')               return 'Return Challan Detail';
+  if (pathname.startsWith('/delivery-challans/') &&
+      pathname !== '/delivery-challans')                return 'Delivery Challan Detail';
   if (pathname.startsWith('/purchase-requests/') &&
       pathname !== '/purchase-requests/new')            return 'Purchase Request Details';
   if (pathname.startsWith('/purchase-orders/') &&

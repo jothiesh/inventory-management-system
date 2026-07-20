@@ -28,7 +28,7 @@ import java.util.Set;
 /**
  * Downloads blank QC Checklist as .docx or .xlsx
  * Matches the original Excel format exactly (TTPL/QC/F/01)
- * Supports all 6 categories: IC, MECHANICAL, KITTING, PCB, ELECTRONIC, LABEL
+ * Supports categories: IC, MECHANICAL, KITTING, PCB, ELECTRONIC, LABEL, SCWMR
  */
 @Slf4j
 @RestController
@@ -40,7 +40,7 @@ public class QcBlankTemplateController {
     private final QcChecklistTemplateRepository templateRepo;
 
     private static final Set<String> ALLOWED = Set.of(
-        "IC", "MECHANICAL", "KITTING", "PCB", "ELECTRONIC", "LABEL"
+        "IC", "MECHANICAL", "KITTING", "PCB", "ELECTRONIC", "LABEL", "SCWMR"
     );
 
     // ─── Download as DOCX ────────────────────────────────────────────

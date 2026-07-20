@@ -1,8 +1,10 @@
 package com.company.inventory.service;
 
+import com.company.inventory.dto.response.SupplierMovementDto;
 import com.company.inventory.dto.response.SupplierProductSummaryDto;
 import com.company.inventory.dto.response.SupplierPurchaseDetailDto;
 import com.company.inventory.entity.Lot;
+import com.company.inventory.entity.Product;
 import com.company.inventory.entity.Supplier;
 import com.company.inventory.entity.User;
 import com.company.inventory.exception.DuplicateResourceException;
@@ -27,6 +29,10 @@ public class SupplierService {
 
     private final SupplierRepository supplierRepository;
     private final LotRepository lotRepository;
+    
+ // add to constructor injection fields:
+    private final com.company.inventory.repository.StockMovementRepository movementRepository;
+
 
     // ─── Basic CRUD ───────────────────────────────────────────────────────────
 
@@ -234,4 +240,41 @@ public class SupplierService {
             return dto;
         }).collect(Collectors.toList());
     }
+    
+    
+    
+    
+    
+    
+
+@Transactional(readOnly = true)
+public List<SupplierMovementDto> getSupplierMovements(Long supplierId) {
+    getSupplierById(supplierId); // 404 if supplier missing
+
+    return movementRepository
+        .findByLotSupplierSupplierIdOrderByCreatedAtDesc(supplierId)
+        .stream()
+        .map(m -> {
+            Lot lot = m.getLot();
+            Product p = m.getProduct();
+            return new SupplierMovementDto(
+                m.getMovementId(),
+                m.getCreatedAt(),
+                m.getMovementType() != null ? m.getMovementType().name() : null,
+                m.getTransactionType() != null ? m.getTransactionType().name() : null,
+                p != null ? p.getProductId() : null,
+                p != null ? p.getPartNumber() : null,
+                p != null ? p.getDescription() : null,
+                (p != null && p.getCategory() != null) ? p.getCategory().getCategoryName() : null,
+                lot != null ? lot.getLotNumber() : null,
+                m.getQuantity(),
+                lot != null ? lot.getPurchasePrice() : null,
+                m.getReferenceNumber(),
+                m.getNotes(),
+                m.isReversed(),
+                m.getCreatedBy() != null ? m.getCreatedBy().getUsername() : null
+            );
+        })
+        .collect(Collectors.toList());
+}
 }

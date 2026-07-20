@@ -16,4 +16,7 @@ export const supplierApi = {
 
   // Alias used in SupplierDetail.jsx (useParams page)
   getPurchaseDetails:  (id) => axiosInstance.get(`/suppliers/${id}/purchase-details`),
+  
+  
+  getMovements: (id) => axiosInstance.get(`/suppliers/${id}/stock-movements`),
 };

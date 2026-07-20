@@ -9,7 +9,7 @@ import {
 import QcTemplatePreview from './QcTemplatePreview';
 import './QcTemplates.css';
 
-// ── 6 correct categories from Excel ──────────────────────────
+// ── 7 categories (6 from Excel + Sub-Contractor Work Monitoring) ──
 const CATEGORY_STYLES = {
   IC:         { bg: '#dbeafe', fg: '#1e40af', gradient: 'linear-gradient(135deg,#dbeafe,#bfdbfe)', label: "IC's Inspection" },
   MECHANICAL: { bg: '#fef3c7', fg: '#92400e', gradient: 'linear-gradient(135deg,#fef3c7,#fde68a)', label: 'Mechanical Items' },
@@ -17,49 +17,56 @@ const CATEGORY_STYLES = {
   PCB:        { bg: '#ede9fe', fg: '#5b21b6', gradient: 'linear-gradient(135deg,#ede9fe,#ddd6fe)', label: 'PCB Inspection' },
   ELECTRONIC: { bg: '#ffedd5', fg: '#9a3412', gradient: 'linear-gradient(135deg,#ffedd5,#fed7aa)', label: 'Electronic Items' },
   LABEL:      { bg: '#fce7f3', fg: '#9d174d', gradient: 'linear-gradient(135deg,#fce7f3,#fbcfe8)', label: 'Label / Sticker' },
+  SCWMR:      { bg: '#cffafe', fg: '#0e7490', gradient: 'linear-gradient(135deg,#cffafe,#a5f3fc)', label: 'Sub-Contractor Work Monitoring' },
 };
 
 const FALLBACK_TEMPLATES = [
   { categoryCode: 'IC',         categoryName: "IC's Inspection",      formNo: 'TTPL/QC/F/1C  Rev:2  dated 10/07/24', stages: [
-    { id:1, slNo:1, stageOperation:'Visual Inspection', checkPoint:'VI for Packing quality',               aqlLabel:'As per AQL' },
-    { id:2, slNo:2, stageOperation:'Visual Inspection', checkPoint:'VI for any damage/lead breaks /Rust',  aqlLabel:'As per AQL' },
-    { id:3, slNo:3, stageOperation:'Visual Inspection', checkPoint:'Top Marking as per datasheet',         aqlLabel:'As per AQL' },
-    { id:4, slNo:4, stageOperation:'Visual Inspection', checkPoint:'IC Part Verification as per BOM',      aqlLabel:'As per AQL' },
-    { id:5, slNo:5, stageOperation:'Test method',       checkPoint:'Solderability Test',                   aqlLabel:'As per AQL' },
+    { id:1, slNo:1, stageOperation:'Visual Inspection', checkPoint:'VI for Packing quality' },
+    { id:2, slNo:2, stageOperation:'Visual Inspection', checkPoint:'VI for any damage/lead breaks /Rust' },
+    { id:3, slNo:3, stageOperation:'Visual Inspection', checkPoint:'Top Marking as per datasheet' },
+    { id:4, slNo:4, stageOperation:'Visual Inspection', checkPoint:'IC Part Verification as per BOM' },
+    { id:5, slNo:5, stageOperation:'Test method',       checkPoint:'Solderability Test' },
   ]},
   { categoryCode: 'MECHANICAL',  categoryName: 'Mechanical Items',     formNo: 'TTPL/QC/F/1D  Rev:2  dated 10/07/24', stages: [
-    { id:6,  slNo:1, stageOperation:'Visual Inspection', checkPoint:'VI for Packing quality',                         aqlLabel:'As per AQL' },
-    { id:7,  slNo:2, stageOperation:'Visual Inspection', checkPoint:'VI for any damage/ breaks/scratche marks /Rust', aqlLabel:'As per AQL' },
-    { id:8,  slNo:3, stageOperation:'Visual Inspection', checkPoint:'VI for Powder Coating Finish',                   aqlLabel:'As per AQL' },
-    { id:9,  slNo:4, stageOperation:'Visual Inspection', checkPoint:'Fitment Check',                                  aqlLabel:'As per AQL' },
+    { id:6,  slNo:1, stageOperation:'Visual Inspection', checkPoint:'VI for Packing quality' },
+    { id:7,  slNo:2, stageOperation:'Visual Inspection', checkPoint:'VI for any damage/ breaks/scratche marks /Rust' },
+    { id:8,  slNo:3, stageOperation:'Visual Inspection', checkPoint:'VI for Powder Coating Finish' },
+    { id:9,  slNo:4, stageOperation:'Visual Inspection', checkPoint:'Fitment Check' },
   ]},
   { categoryCode: 'KITTING',     categoryName: 'Kitting Components',   formNo: 'TTPL/QC/F/1E  Rev:2  dated 10/07/24', stages: [
-    { id:10, slNo:1, stageOperation:'Visual Inspection', checkPoint:'VI for Packing quality',              aqlLabel:'As per AQL' },
-    { id:11, slNo:2, stageOperation:'Visual Inspection', checkPoint:'VI for any damage/lead breaks /Rust', aqlLabel:'As per AQL' },
-    { id:12, slNo:3, stageOperation:'Visual Inspection', checkPoint:'Top Marking as per datasheet',        aqlLabel:'As per AQL' },
-    { id:13, slNo:4, stageOperation:'Visual Inspection', checkPoint:'Part Verification as per BOM',        aqlLabel:'As per AQL' },
+    { id:10, slNo:1, stageOperation:'Visual Inspection', checkPoint:'VI for Packing quality' },
+    { id:11, slNo:2, stageOperation:'Visual Inspection', checkPoint:'VI for any damage/lead breaks /Rust' },
+    { id:12, slNo:3, stageOperation:'Visual Inspection', checkPoint:'Top Marking as per datasheet' },
+    { id:13, slNo:4, stageOperation:'Visual Inspection', checkPoint:'Part Verification as per BOM' },
   ]},
   { categoryCode: 'PCB',         categoryName: 'PCB Inspection',       formNo: 'TTPL/QC/F/1F  Rev:2  dated 10/07/24', stages: [
-    { id:14, slNo:1, stageOperation:'Visual Inspection', checkPoint:'VI for Packing quality & damage',                    aqlLabel:'As per AQL' },
-    { id:15, slNo:2, stageOperation:'Visual Inspection', checkPoint:'Check Supplier FPT Report',                          aqlLabel:'As per AQL' },
-    { id:16, slNo:3, stageOperation:'Visual Inspection', checkPoint:'Conductor(all tracks) covered with solder resist',   aqlLabel:'As per AQL' },
-    { id:17, slNo:4, stageOperation:'Visual Inspection', checkPoint:'Spacing b/w conductors (No track short allowed)',    aqlLabel:'As per AQL' },
-    { id:18, slNo:5, stageOperation:'Visual Inspection', checkPoint:'Legend print should be readable',                    aqlLabel:'As per AQL' },
-    { id:19, slNo:6, stageOperation:'Visual Inspection', checkPoint:'Lamination/Adhesive Test -Solder mask not peel off', aqlLabel:'As per AQL' },
-    { id:20, slNo:7, stageOperation:'Test method',       checkPoint:'Solderability Test',                                 aqlLabel:'As per AQL' },
+    { id:14, slNo:1, stageOperation:'Visual Inspection', checkPoint:'VI for Packing quality & damage' },
+    { id:15, slNo:2, stageOperation:'Visual Inspection', checkPoint:'Check Supplier FPT Report' },
+    { id:16, slNo:3, stageOperation:'Visual Inspection', checkPoint:'Conductor(all tracks) covered with solder resist' },
+    { id:17, slNo:4, stageOperation:'Visual Inspection', checkPoint:'Spacing b/w conductors (No track short allowed)' },
+    { id:18, slNo:5, stageOperation:'Visual Inspection', checkPoint:'Legend print should be readable' },
+    { id:19, slNo:6, stageOperation:'Visual Inspection', checkPoint:'Lamination/Adhesive Test -Solder mask not peel off' },
+    { id:20, slNo:7, stageOperation:'Test method',       checkPoint:'Solderability Test' },
   ]},
   { categoryCode: 'ELECTRONIC',  categoryName: 'Electronic Items',     formNo: 'TTPL/QC/F/1G  Rev:2  dated 10/07/24', stages: [
-    { id:21, slNo:1, stageOperation:'Visual Inspection', checkPoint:'VI for Packing quality',              aqlLabel:'As per AQL' },
-    { id:22, slNo:2, stageOperation:'Visual Inspection', checkPoint:'VI for any damage/lead breaks /Rust', aqlLabel:'As per AQL' },
-    { id:23, slNo:3, stageOperation:'Visual Inspection', checkPoint:'Top Marking as per datasheet',        aqlLabel:'As per AQL' },
-    { id:24, slNo:4, stageOperation:'Visual Inspection', checkPoint:'Part Verification as per BOM',        aqlLabel:'As per AQL' },
-    { id:25, slNo:5, stageOperation:'Test method',       checkPoint:'Solderability Test',                  aqlLabel:'As per AQL' },
+    { id:21, slNo:1, stageOperation:'Visual Inspection', checkPoint:'VI for Packing quality' },
+    { id:22, slNo:2, stageOperation:'Visual Inspection', checkPoint:'VI for any damage/lead breaks /Rust' },
+    { id:23, slNo:3, stageOperation:'Visual Inspection', checkPoint:'Top Marking as per datasheet' },
+    { id:24, slNo:4, stageOperation:'Visual Inspection', checkPoint:'Part Verification as per BOM' },
+    { id:25, slNo:5, stageOperation:'Test method',       checkPoint:'Solderability Test' },
   ]},
   { categoryCode: 'LABEL',       categoryName: 'Label / Sticker',      formNo: 'TTPL/QC/F/1H  Rev:2  dated 10/07/24', stages: [
-    { id:26, slNo:1, stageOperation:'Visual Inspection', checkPoint:'VI for Contents Printed as per Product Std',       aqlLabel:'As per AQL' },
-    { id:27, slNo:2, stageOperation:'Visual Inspection', checkPoint:'VI for any damage/Scratches',                      aqlLabel:'As per AQL' },
-    { id:28, slNo:3, stageOperation:'Visual Inspection', checkPoint:'Adhesive/Gumming Quality',                         aqlLabel:'As per AQL' },
-    { id:29, slNo:4, stageOperation:'Test method',       checkPoint:'Fix the label to Enclosure and check after 2days', aqlLabel:'As per AQL' },
+    { id:26, slNo:1, stageOperation:'Visual Inspection', checkPoint:'VI for Contents Printed as per Product Std' },
+    { id:27, slNo:2, stageOperation:'Visual Inspection', checkPoint:'VI for any damage/Scratches' },
+    { id:28, slNo:3, stageOperation:'Visual Inspection', checkPoint:'Adhesive/Gumming Quality' },
+    { id:29, slNo:4, stageOperation:'Test method',       checkPoint:'Fix the label to Enclosure and check after 2days' },
+  ]},
+  { categoryCode: 'SCWMR',      categoryName: 'Sub Contractor Work Monitoring Report', formNo: 'TTPL/QC/F/02  Rev:1  dated 22/08/14', stages: [
+    { id:30, slNo:1, stageOperation:'Assembled PCB Visual Inspection', checkPoint:'Check for any shorts or any Components is missing' },
+    { id:31, slNo:2, stageOperation:'Wireharness Soldering',           checkPoint:'Check for wiring Colour Code with wiring Diagram.' },
+    { id:32, slNo:3, stageOperation:'Final Test',                      checkPoint:'Function' },
+    { id:33, slNo:4, stageOperation:'Overall Check',                   checkPoint:'Outside Visual inspection' },
   ]},
 ];
 
@@ -81,8 +88,7 @@ const EditModal = ({ template, onClose, onSave }) => {
     setStages(prev => [...prev, {
       slNo: maxSlNo + 1,
       stageOperation: 'Visual Inspection',
-      checkPoint: '',
-      aqlLabel: 'As per AQL'
+      checkPoint: ''
     }]);
   };
 
@@ -140,12 +146,6 @@ const EditModal = ({ template, onClose, onSave }) => {
                   value={s.checkPoint || ''}
                   onChange={e => updateStage(idx, 'checkPoint', e.target.value)}
                   placeholder="Check Point"
-                />
-                <input
-                  className="qct-edit-input qct-edit-aql"
-                  value={s.aqlLabel || ''}
-                  onChange={e => updateStage(idx, 'aqlLabel', e.target.value)}
-                  placeholder="AQL"
                 />
                 <button className="qct-edit-remove" onClick={() => removeStage(idx)}>
                   <FiTrash2 size={13} />

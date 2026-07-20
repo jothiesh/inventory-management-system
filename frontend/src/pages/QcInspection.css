@@ -150,7 +150,43 @@
 }
 .qci-preview-sign       { display: flex; flex-direction: column; gap: 2px; font-size: 8px; }
 .qci-preview-sign-line  { height: 16px; border-bottom: 1px solid #000; width: 140px; }
-.qci-preview-decision   { font-size: 8px; font-weight: 700; }
+.qci-preview-decision   {
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+/* ── Clickable "Lot is Accepted / Rejected / Hold / Partial" ticks ── */
+.qci-preview-lot-tick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 3px 7px;
+  margin-left: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  border-radius: 4px;
+  transition: all 0.12s;
+}
+.qci-preview-lot-tick .qci-lot-tick-box {
+  font-size: 15px;
+  line-height: 1;
+}
+.qci-preview-lot-tick:hover { background: #f1f5f9; border-color: #e2e8f0; }
+.qci-preview-lot-tick.active {
+  font-weight: 900;
+  border-color: currentColor;
+  background: #f8fafc;
+}
 
 /* ── INSPECTOR + MODE TOGGLE ── */
 .qci-split-header-row { display: flex; gap: 14px; }
@@ -182,7 +218,6 @@
 }
 
 /* ── BULK DECISION ── */
-/* ★ TASK 2: compact buttons — small horizontal pills instead of big cards */
 .qci-bulk-options { display: flex; gap: 10px; flex-wrap: wrap; }
 .qci-decision-card {
   position: relative; background: #fff; border: 2px solid #e2e8f0;
@@ -211,18 +246,17 @@
 .qci-per-item-table th {
   padding: 10px 8px; text-align: left; font-size: 10px; font-weight: 800;
   color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap;
-  /* ★ table lines */
   border: 1px solid #374151;
 }
 .qci-per-item-table th.num-col { text-align: right; }
 .qci-per-item-table td {
-  padding: 8px 6px; border: 1px solid #e2e8f0; /* ★ all cell borders */
+  padding: 8px 6px; border: 1px solid #e2e8f0;
   vertical-align: middle;
 }
 .qci-per-item-table td.num-col { text-align: right; font-family: monospace; }
 .qci-per-item-table tbody tr:hover { background: #f8faff; }
 
-/* ★ Qty inputs — narrow */
+/* Qty inputs — narrow */
 .qci-qty-input {
   width: 70px; border: 1.5px solid #e2e8f0; border-radius: 6px;
   padding: 6px 5px; font-size: 13px; font-family: monospace;
@@ -234,7 +268,7 @@
 .qci-qty-rejected      { color: #dc2626; border-left: 3px solid #fca5a5; }
 .qci-qty-held          { color: #d97706; border-left: 3px solid #fcd34d; }
 
-/* ★ Remarks input — wide */
+/* Remarks input — wide */
 .qci-remarks-input {
   width: 100%; min-width: 120px; padding: 6px 8px;
   border: 1.5px solid #e2e8f0; border-radius: 6px;
@@ -320,7 +354,6 @@
   border-bottom: 1px solid #f1f5f9;
   transition: opacity 0.15s;
 }
-/* ★ TASK 1: unticked checkpoints are dimmed and disabled */
 .qci-stage-off { opacity: 0.4; background: #f8fafc; }
 .qci-stage-off .qci-dialog-btn,
 .qci-stage-off .qci-dialog-remark { pointer-events: none; }
@@ -376,7 +409,7 @@
 }
 
 /* ════════════════════════════════════════════════
-   ★ TASK 3 — Inspector name edit
+   Inspector name edit
    ════════════════════════════════════════════════ */
 .qci-name-edit-btn {
   margin-left: auto; background: #eef2ff; border: 1px solid #c7d2fe;
@@ -403,7 +436,7 @@
 .qci-name-save-btn:hover { background: #059669; }
 
 /* ════════════════════════════════════════════════
-   ★ TASK 1 — selected-checkpoints info in card head
+   selected-checkpoints info in card head
    ════════════════════════════════════════════════ */
 .qci-head-sel-info {
   margin-left: auto; font-size: 11px; font-weight: 700;
@@ -412,7 +445,7 @@
 }
 
 /* ════════════════════════════════════════════════
-   ★ TASK 4 — live preview ticks / values
+   live preview ticks / values
    ════════════════════════════════════════════════ */
 .qci-tick-pass { color: #059669; font-weight: 900; }
 .qci-tick-fail { color: #dc2626; font-weight: 900; }
@@ -426,7 +459,7 @@
 }
 
 /* ════════════════════════════════════════════════
-   ★ NEW — per-item ROW selection (waiting list)
+   per-item ROW selection (waiting list)
    ════════════════════════════════════════════════ */
 .qci-lot-checkbox {
   width: 16px; height: 16px; cursor: pointer; accent-color: #4f46e5;
@@ -449,8 +482,9 @@
   background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
   font-size: 12px; color: #92400e;
 }
+
 /* ════════════════════════════════════════════════════════════
-   ★ NEW — EDITABLE "INSPECTED QTY (AQL)" IN LIVE PREVIEW
+   EDITABLE "INSPECTED QTY (AQL)" IN LIVE PREVIEW
    ════════════════════════════════════════════════════════════ */
 .qci-preview-qty-input {
   width: 90%;
@@ -475,4 +509,523 @@
     background: transparent !important;
     box-shadow: none !important;
   }
+}
+
+/* ── Inline editable Pass/Fail/NA in preview ── */
+.qci-preview-pfn {
+  display: inline-flex;
+  gap: 3px;
+  justify-content: center;
+}
+.qci-preview-pfn-btn {
+  padding: 2px 6px;
+  border: 1px solid;
+  border-radius: 4px;
+  background: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: all 0.12s;
+}
+.qci-preview-pfn-btn:hover { filter: brightness(0.95); transform: translateY(-1px); }
+
+/* Inline remark input in preview */
+.qci-preview-remark-input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 10px;
+  font-family: inherit;
+  outline: none;
+}
+.qci-preview-remark-input:focus { border-color: #4f46e5; }
+
+/* Stage applicability toggles (replaces the modal's tick column) */
+.qci-stage-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 4px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px dashed #e2e8f0;
+  border-radius: 8px;
+}
+.qci-stage-toggle-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.qci-stage-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #94a3b8;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.qci-stage-toggle.on { color: #1e293b; border-color: #c7d2fe; }
+.qci-sel-link {
+  background: none;
+  border: none;
+  color: #4f46e5;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* ════════════════════════════════════════════════
+   ★ NEW — green Download button beside inspector name
+   ════════════════════════════════════════════════ */
+.qci-preview-sign-name-row {
+  display: flex; align-items: center; gap: 8px;
+}
+.qci-preview-dl-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: #10b981; color: #fff; border: none;
+  border-radius: 5px; padding: 3px 10px;
+  font: 700 10px 'Inter', system-ui, sans-serif;
+  cursor: pointer; transition: background 0.15s;
+}
+.qci-preview-dl-btn:hover { background: #059669; }
+
+@media print { .qci-preview-dl-btn { display: none !important; } }
+/* ══════════════════════════════════════════════════════
+   LOT TABS — one checklist form per lot
+   ══════════════════════════════════════════════════════ */
+.qci-lot-tabs-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.qci-lot-tabs-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  white-space: nowrap;
+}
+.qci-lot-tabs { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+
+/* ★ "saved" pill — the checklist is persisted on the server */
+.qci-draft-saved {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #059669;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.qci-lot-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 7px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  max-width: 260px;
+  transition: all 0.15s;
+}
+.qci-lot-tab:hover { border-color: #c7d2fe; background: #f5f3ff; }
+.qci-lot-tab.active {
+  border-color: #4f46e5;
+  background: #eef2ff;
+  color: #3730a3;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.18);
+}
+.qci-lot-tab-no {
+  width: 16px; height: 16px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 9px;
+  font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+}
+.qci-lot-tab.active .qci-lot-tab-no { background: #4f46e5; color: #fff; }
+.qci-lot-tab-part {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+}
+.qci-lot-tab-qty {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 10px;
+  font-weight: 800;
+}
+.qci-lot-tab.active .qci-lot-tab-qty { background: #c7d2fe; color: #312e81; }
+
+/* decision dot on the tab */
+.qci-lot-tab-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #94a3b8;
+}
+.qci-lot-tab-dot.accepted { background: #10b981; }
+.qci-lot-tab-dot.rejected { background: #ef4444; }
+.qci-lot-tab-dot.hold     { background: #f59e0b; }
+.qci-lot-tab-dot.partial  { background: #f97316; }
+
+/* combined / one-by-one download buttons */
+.qci-lot-dl-group { display: flex; gap: 6px; margin-left: auto; }
+.qci-lot-dl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.qci-lot-dl-btn:hover { filter: brightness(0.92); transform: translateY(-1px); }
+.qci-lot-dl-btn.combined { background: #4f46e5; }
+.qci-lot-dl-btn.each     { background: #0891b2; }
+
+.qci-lot-pane { animation: qciLotIn 0.18s ease both; }
+@keyframes qciLotIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Material Desc stretches across the meta row */
+.qci-preview-matdesc { flex: 1; }
+
+/* ══════════════════════════════════════════════════════════════
+   ★ REDESIGN — QC Batch Inspection
+   
+   The old page spent three full bands on chrome before showing any
+   work: a header bar, four meta cards, then an "Inspector Details"
+   card sitting beside two ~100px-tall cards for a binary choice.
+   Then three submit buttons of near-equal weight, so "Submit &
+   Generate PDF" read the same as "Cancel".
+   
+   This band collapses that into: one hero (identity + inspector +
+   status + facts), a segmented control, and a sticky action bar
+   with a single unmistakable primary.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ─── HERO ─────────────────────────────────────────────── */
+.qci-hero {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.qci-hero-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.qci-hero-icon {
+  width: 38px; height: 38px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #4f46e5, #3730a3);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(79,70,229,0.28);
+}
+
+.qci-hero-id { min-width: 0; flex: 1; }
+.qci-hero-id .qci-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  color: #0f172a;
+  font-family: 'Courier New', monospace;
+}
+.qci-hero-id .qci-subtitle {
+  margin: 1px 0 0;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.qci-hero-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ★ TASK 3 — inspector chip, next to the status pill */
+.qci-hero-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 20px;
+  background: #f8fafc;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+  cursor: pointer;
+  max-width: 200px;
+  transition: all 0.15s;
+}
+.qci-hero-name:hover { border-color: #c7d2fe; background: #eef2ff; color: #3730a3; }
+.qci-hero-name > span {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.qci-hero-name svg { flex-shrink: 0; color: #94a3b8; }
+.qci-hero-name:hover svg { color: #6366f1; }
+.qci-hero-name-pen { opacity: 0; transition: opacity 0.15s; }
+.qci-hero-name:hover .qci-hero-name-pen { opacity: 1; }
+
+.qci-hero-name-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 5px 3px 10px;
+  border: 1.5px solid #4f46e5;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(79,70,229,0.12);
+}
+.qci-hero-name-edit svg { color: #6366f1; flex-shrink: 0; }
+.qci-hero-name-edit input {
+  border: none; outline: none; background: transparent;
+  font-family: inherit; font-size: 12px; font-weight: 700;
+  color: #1e293b; width: 130px;
+}
+.qci-hero-name-edit button {
+  width: 22px; height: 22px;
+  border: none; border-radius: 50%;
+  background: #4f46e5; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0;
+}
+.qci-hero-name-edit button:hover { background: #3730a3; }
+
+/* ─── FACTS STRIP (was four cards) ────────────────────── */
+.qci-hero-facts {
+  display: flex;
+  align-items: stretch;
+  border-top: 1px solid #f1f5f9;
+  background: #f8fafc;
+}
+.qci-fact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  min-width: 0;
+  flex: 1;
+  border-right: 1px solid #e9eef5;
+}
+.qci-fact:last-child { border-right: none; }
+.qci-fact-icon  { color: #94a3b8; flex-shrink: 0; }
+.qci-fact-label {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.5px;
+  text-transform: uppercase; color: #94a3b8; flex-shrink: 0;
+}
+.qci-fact-value {
+  font-size: 12px; font-weight: 700; color: #1e293b;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ─── MODE — segmented control (was two big cards) ────── */
+.qci-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 9px 14px;
+  margin-bottom: 12px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+.qci-mode-label {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.4px;
+  text-transform: uppercase; color: #64748b;
+}
+.qci-seg {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  background: #f1f5f9;
+  border-radius: 8px;
+}
+.qci-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.qci-seg-btn:hover { color: #334155; }
+.qci-seg-btn.active {
+  background: #fff;
+  color: #4f46e5;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+.qci-mode-hint { font-size: 11px; color: #94a3b8; margin-left: auto; }
+
+/* ─── VERDICT PILLS (were oversized cards) ─────────────── */
+.qci-verdict-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.qci-verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.qci-verdict:hover { border-color: #cbd5e1; transform: translateY(-1px); }
+.qci-verdict.active { box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+.qci-verdict-tick { margin-left: 2px; }
+
+.qci-optional {
+  font-size: 10px; font-weight: 600; color: #94a3b8;
+  text-transform: none; letter-spacing: 0;
+}
+
+/* ─── STICKY ACTION BAR ────────────────────────────────── */
+.qci-actionbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  margin-top: 12px;
+  background: rgba(255,255,255,0.96);
+  backdrop-filter: blur(8px);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 -4px 20px rgba(15,23,42,0.09);
+}
+.qci-actionbar-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  min-width: 0;
+}
+.qci-ab-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.qci-ab-sub { font-size: 12px; color: #64748b; }
+.qci-actionbar-btns {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.qci-btn-ghost {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+}
+.qci-btn-ghost:hover:not(:disabled) { background: #f1f5f9; color: #334155; }
+.qci-btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* primary is now visibly the primary */
+.qci-actionbar .qci-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 20px;
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: 0 4px 14px rgba(79,70,229,0.32);
+}
+.qci-actionbar .qci-btn-secondary {
+  padding: 9px 16px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.qci-spin { animation: qci-spin-anim 0.7s linear infinite; }
+@keyframes qci-spin-anim { to { transform: rotate(360deg); } }
+
+/* ─── Responsive ───────────────────────────────────────── */
+@media (max-width: 860px) {
+  .qci-hero-top { flex-wrap: wrap; }
+  .qci-hero-right { width: 100%; justify-content: space-between; }
+  .qci-hero-facts { flex-wrap: wrap; }
+  .qci-fact { flex: 1 1 45%; border-bottom: 1px solid #e9eef5; }
+  .qci-mode-hint { display: none; }
+  .qci-actionbar { flex-direction: column; align-items: stretch; }
+  .qci-actionbar-btns { margin-left: 0; }
+  .qci-actionbar .qci-btn-primary { flex: 1; justify-content: center; }
 }

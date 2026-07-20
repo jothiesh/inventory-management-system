@@ -1,45 +1,36 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { boxApi } from '../../api/boxApi';
 import { toast } from 'react-toastify';
+import { FiX } from 'react-icons/fi';
+
+// CHANGED: Box Number input removed — backend auto-generates B1, B2, … per rack.
+// Only Box Label is entered (optional, but at least something is nice to have).
 
 const BoxModal = ({ box, rackId, onClose }) => {
-  const [formData, setFormData] = useState({
-    rackId: rackId || '',
-    boxNumber: '',
-    boxLabel: '',
-  });
-  const [loading, setLoading] = useState(false);
+  const isEdit = !!box;
+  const [boxLabel, setBoxLabel] = useState(box?.boxLabel || '');
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (box) {
-      setFormData({
-        rackId: box.rack.rackId,
-        boxNumber: box.boxNumber,
-        boxLabel: box.boxLabel || '',
-      });
-    }
-  }, [box]);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-
+  const handleSave = async () => {
+    const payload = {
+      rackId: isEdit ? (box.rackId ?? rackId) : rackId,
+      boxNumber: isEdit ? box.boxNumber : null, // null → auto-generate
+      boxLabel: boxLabel.trim() || null,
+    };
     try {
-      if (box) {
-        await boxApi.update(box.boxId, {
-          boxNumber: formData.boxNumber,
-          boxLabel: formData.boxLabel,
-        });
-        toast.success('Box updated successfully');
+      setSaving(true);
+      if (isEdit) {
+        await boxApi.update(box.boxId, payload);
+        toast.success('Box updated');
       } else {
-        await boxApi.create(formData);
-        toast.success('Box created successfully');
+        await boxApi.create(payload);
+        toast.success('Box created');
       }
       onClose(true);
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Operation failed');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to save box');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
@@ -47,43 +38,31 @@ const BoxModal = ({ box, rackId, onClose }) => {
     <div className="modal-overlay" onClick={() => onClose(false)}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="modal-title">{box ? 'Edit Box' : 'Add Box'}</h2>
-          <button className="modal-close" onClick={() => onClose(false)}>
-            &times;
+          <h2>{isEdit ? `Edit Box — ${box.boxNumber}` : 'Add Box'}</h2>
+          <button className="modal-close" onClick={() => onClose(false)} aria-label="Close">
+            <FiX />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Box Number *</label>
-            <input
-              type="text"
-              value={formData.boxNumber}
-              onChange={(e) => setFormData({ ...formData, boxNumber: e.target.value })}
-              required
-              placeholder="e.g., B1"
-            />
-          </div>
+        <div className="form-group">
+          <label>Box Label</label>
+          <input
+            type="text"
+            placeholder="e.g., Small Components"
+            value={boxLabel}
+            onChange={(e) => setBoxLabel(e.target.value)}
+            autoFocus
+          />
+        </div>
 
-          <div className="form-group">
-            <label>Box Label</label>
-            <input
-              type="text"
-              value={formData.boxLabel}
-              onChange={(e) => setFormData({ ...formData, boxLabel: e.target.value })}
-              placeholder="e.g., Small Components"
-            />
-          </div>
-
-          <div className="modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={() => onClose(false)}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        </form>
+        <div className="modal-actions">
+          <button className="rack-btn rack-btn-ghost" onClick={() => onClose(false)} disabled={saving}>
+            Cancel
+          </button>
+          <button className="rack-btn rack-btn-primary" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
       </div>
     </div>
   );

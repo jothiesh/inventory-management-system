@@ -113,6 +113,10 @@ public class StockService {
     // BULK STOCK IN
     // ─────────────────────────────────────────────────────────────
 
+ // ─────────────────────────────────────────────────────────────
+    // BULK STOCK IN
+    // ─────────────────────────────────────────────────────────────
+
     @Transactional
     public BulkStockInResponse bulkStockIn(BulkStockInRequest request, User currentUser) {
         log.info("Processing Bulk Stock IN: {} items", request.getItems() != null ? request.getItems().size() : 0);
@@ -125,9 +129,45 @@ public class StockService {
                 .filter(java.util.Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        StockInBatch batch = createStockInBatch(null, "BULK-" + System.currentTimeMillis(),
+        // ── Resolve the ORIGINAL invoice from the user's items ──
+        // Use the first non-blank referenceNumber the user entered.
+        // Only fall back to BULK-timestamp if the user left ALL of them empty.
+        log.info("[BULK-INVOICE] Resolving batch invoice. User-supplied refs = {}",
+                request.getItems().stream()
+                        .map(BulkStockInRequest.BulkStockInItem::getReferenceNumber)
+                        .collect(Collectors.toList()));
+
+        String resolvedInvoice = request.getItems().stream()
+                .map(BulkStockInRequest.BulkStockInItem::getReferenceNumber)
+                .filter(ref -> ref != null && !ref.isBlank())
+                .map(String::trim)
+                .findFirst()
+                .orElse(null);
+
+        if (resolvedInvoice == null) {
+            resolvedInvoice = "BULK-" + System.currentTimeMillis();
+            log.warn("[BULK-INVOICE] No invoice number entered by user — falling back to auto-ref: {}",
+                    resolvedInvoice);
+        } else {
+            log.info("[BULK-INVOICE] Using ORIGINAL user invoice for batch: {}", resolvedInvoice);
+        }
+
+        // ── Resolve supplier (first item's supplierId) so batch isn't supplier-less ──
+        Long resolvedSupplierId = request.getItems().stream()
+                .map(BulkStockInRequest.BulkStockInItem::getSupplierId)
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+        log.info("[BULK-INVOICE] Resolved supplierId for batch = {}", resolvedSupplierId);
+
+        StockInBatch batch = createStockInBatch(
+                resolvedSupplierId,
+                resolvedInvoice,
                 request.getItems().isEmpty() ? LocalDate.now() : request.getItems().get(0).getPurchaseDate(),
                 compositeQty, request.getItems().size(), currentUser);
+
+        log.info("[BULK-INVOICE] Batch created. id={}, batchRef={}, invoiceNo={}, supplierName={}",
+                batch.getId(), batch.getBatchRef(), batch.getInvoiceNo(), batch.getSupplierName());
 
         for (BulkStockInRequest.BulkStockInItem item : request.getItems()) {
             BulkStockInResponse.BulkStockInItemResult result = new BulkStockInResponse.BulkStockInItemResult();
@@ -192,6 +232,9 @@ public class StockService {
         } catch (Exception e) {
             log.warn("Failed to dispatch bulk QC notifications: {}", e.getMessage());
         }
+
+        log.info("[BULK-INVOICE] Bulk Stock IN finished. batchRef={}, invoiceNo={}, success={}, failed={}",
+                batch.getBatchRef(), batch.getInvoiceNo(), successCount, failedCount);
 
         return new BulkStockInResponse(request.getItems().size(), successCount, failedCount, results);
     }

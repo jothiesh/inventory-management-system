@@ -25,6 +25,28 @@ public class BulkQcDecisionRequest {
 
     private String overallRemarks;
 
-    /** Filled checklists per category (optional but recommended). */
+    /**
+     * ★ NEW — the filled checklist rows.
+     *
+     * One entry per (lot, checkpoint): the Inspected Qty (AQL), the remark and
+     * the Pass/Fail/NA the inspector actually ticked. The frontend has always
+     * sent this under the name "checklistResults"; until now no field carried
+     * that name, so Jackson silently discarded the whole array and the QC
+     * record was never stored.
+     *
+     * Read by QcInspectionService -> QcFilledChecklistService.attachToInspection().
+     */
+    private List<ChecklistResultDto> checklistResults;
+
+    /**
+     * ⚠ DEAD FIELD — kept only so existing callers don't break on an unknown
+     * property. Nothing reads getChecklists(): QcInspectionService never calls
+     * it. The QcQueue quick-decision modal posts "checklists" here and the data
+     * goes nowhere. The "optional but recommended" comment was aspirational —
+     * it was never wired up.
+     *
+     * Migrate those callers to checklistResults above, then delete this.
+     */
+    @Deprecated
     private List<FilledChecklistRequest> checklists;
 }

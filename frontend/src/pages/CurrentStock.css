@@ -57,6 +57,10 @@
   padding: 24px;
   background: var(--cs-bg);
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+  box-sizing: border-box;
   font-family: 'Segoe UI', system-ui, sans-serif;
   color: var(--cs-text);
   animation: csFadeIn 0.4s var(--cs-ease);
@@ -117,8 +121,9 @@
 /* ─── stat cards ────────────────────────────────────────── */
 .cs-stats-row {
   display: grid; grid-template-columns: repeat(5, 1fr);
-  gap: 12px; margin-bottom: 14px;
+  gap: 12px; margin-bottom: 14px; min-width: 0;
 }
+.cs-stats-row > * { min-width: 0; }
 .cs-stat {
   position: relative; display: flex; align-items: center; gap: 12px;
   padding: 16px 18px; background: var(--cs-surface); border-radius: 12px;
@@ -204,7 +209,7 @@
 .cs-card {
   background: var(--cs-surface); border-radius: 12px;
   border: 1px solid var(--cs-border); margin-bottom: 14px;
-  overflow: hidden; animation: csFadeIn 0.4s var(--cs-ease);
+  max-width: 100%; overflow: hidden; animation: csFadeIn 0.4s var(--cs-ease);
 }
 .cs-card:last-child { margin-bottom: 0; }
 .cs-card-icon { color: var(--cs-primary); }
@@ -253,9 +258,8 @@
 
 /* ─── category pills ────────────────────────────────────── */
 .cs-cat-pills {
-  display: flex; gap: 6px; padding: 10px 16px;
+  display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px;
   border-bottom: 1px solid var(--cs-border-soft);
-  overflow-x: auto; scrollbar-width: none;
 }
 .cs-cat-pills::-webkit-scrollbar { display: none; }
 
@@ -352,9 +356,21 @@
 
 /* ─── table ─────────────────────────────────────────────── */
 .cs-table-wrap { overflow-x: auto; }
-/* content-sized: table is exactly as wide as its columns — no empty filler, no dark box */
-.cs-table { width: auto; border-collapse: collapse; table-layout: auto; }
-.cs-table th, .cs-table td { white-space: nowrap; }
+/* full-width, fixed layout — columns sized predictably, no empty filler */
+.cs-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.cs-table th, .cs-table td {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── Column widths — prevents unwanted wide/empty columns ── */
+.cs-table th:nth-child(1), .cs-table td:nth-child(1) { width: 36px;  }  /* expand   */
+.cs-table th:nth-child(2), .cs-table td:nth-child(2) { width: 16%;   }  /* part no  */
+.cs-table th:nth-child(3), .cs-table td:nth-child(3) { width: 22%;   }  /* desc     */
+.cs-table th:nth-child(4), .cs-table td:nth-child(4) { width: 13%;   }  /* category */
+.cs-table th:nth-child(5), .cs-table td:nth-child(5) { width: 13%;   }  /* supplier */
+.cs-table th:nth-child(6), .cs-table td:nth-child(6) { width: 90px;  }  /* stock    */
+.cs-table th:nth-child(7), .cs-table td:nth-child(7) { width: 120px; }  /* status   */
+.cs-table th:nth-child(8), .cs-table td:nth-child(8) { width: 150px; }  /* details  */
 
 /* ── DARK THEAD (matches Products page style) ── */
 .cs-table thead {
@@ -362,9 +378,9 @@
   position: sticky; top: 0; z-index: 1;
 }
 .cs-table th {
-  padding: 11px 12px; text-align: left; font-size: 11px; font-weight: 700;
+  padding: 9px 10px; text-align: left; font-size: 11px; font-weight: 700;
   color: rgba(255, 255, 255, 0.85);
-  text-transform: uppercase; letter-spacing: 0.5px;
+  text-transform: uppercase; letter-spacing: 0.3px;
   border-bottom: 2px solid rgba(255, 255, 255, 0.06);
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   white-space: nowrap; user-select: none;
@@ -380,20 +396,21 @@
 
 /* ── Table body cells with row + column lines ── */
 .cs-table td {
-  padding: 11px 12px; font-size: 13px; color: #334155;
+  padding: 11px 10px; font-size: 13px; color: #334155;
   border-bottom: 1px solid var(--cs-border);
   border-right: 1px solid var(--cs-border-soft);
   vertical-align: middle;
 }
 .cs-table td:last-child { border-right: none; }
 
-.cs-td-expand  { width: 36px; padding: 11px 8px !important; }
+.cs-td-expand  { width: 36px; padding: 11px 6px !important; }
 .cs-td-right   { text-align: right; }
 .cs-td-center  { text-align: center; }
 .cs-td-health  { width: 110px; }
 .cs-td-actions {
-  width: 130px; text-align: right;
+  text-align: right;
   display: flex; align-items: center; justify-content: flex-end; gap: 4px;
+  overflow: visible;
 }
 
 .cs-row { cursor: pointer; transition: all 0.18s var(--cs-ease); animation: csFadeIn 0.3s var(--cs-ease) both; }
@@ -414,22 +431,23 @@
 /* ─── cell types ────────────────────────────────────────── */
 .cs-part-num {
   font-family: monospace; font-size: 12px; font-weight: 700; color: var(--cs-text);
-  display: block; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .cs-desc {
-  color: #475569; max-width: 180px; overflow: hidden;
+  color: #475569; max-width: 100%; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; display: block;
 }
 .cs-cat-badge {
   display: inline-block; padding: 3px 10px; border-radius: 6px;
   font-size: 11px; font-weight: 600; white-space: nowrap;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis;
   transition: transform 0.2s var(--cs-ease);
 }
 .cs-row:hover .cs-cat-badge { transform: scale(1.05); }
 
 /* Supplier cell */
 .cs-supplier-cell {
-  font-size: 12px; color: var(--cs-text-muted); max-width: 120px;
+  font-size: 12px; color: var(--cs-text-muted); max-width: 100%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;
 }
 
@@ -506,7 +524,7 @@
 /* Labelled details button (slim table — replaces icon-only) */
 .cs-btn-details-labeled {
   display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-  padding: 6px 12px; background: white; border: 1.5px solid var(--cs-border);
+  padding: 6px 10px; background: white; border: 1.5px solid var(--cs-border);
   border-radius: 6px; font-size: 12px; font-weight: 600; color: var(--cs-text-muted);
   cursor: pointer; font-family: inherit; white-space: nowrap;
   transition: all 0.2s var(--cs-ease);
@@ -521,7 +539,7 @@
   display: inline-flex; align-items: center; justify-content: center;
   padding: 5px 8px; background: white; border: 1.5px solid var(--cs-border);
   border-radius: 6px; font-size: 12px; color: var(--cs-text-muted);
-  cursor: pointer; transition: all 0.2s var(--cs-ease);
+  cursor: pointer; transition: all 0.2s var(--cs-ease); flex-shrink: 0;
 }
 .cs-btn-issue-row:hover:not(:disabled) {
   background: var(--cs-danger-soft); color: var(--cs-danger);
@@ -810,6 +828,8 @@
 @media (max-width: 1024px) {
   .cs-stats-row { grid-template-columns: repeat(3, 1fr); }
   .cs-stat-info { grid-column: span 3; }
+  /* allow horizontal scroll instead of squeezing columns on narrow screens */
+  .cs-table { min-width: 900px; }
 }
 @media (max-width: 768px) {
   .cs-page { padding: 14px; }

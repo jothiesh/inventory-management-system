@@ -1,4 +1,5 @@
 package com.company.inventory.controller;
+
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 
@@ -48,6 +49,13 @@ public class SpaFallbackController {
     @GetMapping("/qc/templates")
     public String qcTemplates() { return "forward:/index.html"; }
 
+    // ─── Invoices ───────────────────────────────────────────────────
+    @GetMapping("/invoices")
+    public String invoices() { return "forward:/index.html"; }
+
+    @GetMapping("/invoices/{id:[0-9]+}")
+    public String invoiceDetail() { return "forward:/index.html"; }
+
     // ─── Stock OUT routes ─────────────────────────────────────────
     @GetMapping("/stock-out")
     public String stockOut() { return "forward:/index.html"; }
@@ -62,7 +70,14 @@ public class SpaFallbackController {
     @GetMapping("/stock-in/rejected")
     public String stockInRejected() { return "forward:/index.html"; }
 
-    // ─── Delivery Challan ─────────────────────────────────────────  ← NEW
+    // ─── Delivery Challan ─────────────────────────────────────────
     @GetMapping("/delivery-challan")
     public String deliveryChallan() { return "forward:/index.html"; }
+
+    // ─── Return Challans ──────────────────────────────────────────  ← FIX: base list route was missing
+    @GetMapping("/qc/return-challans")
+    public String qcReturnChallans() { return "forward:/index.html"; }
+
+    @GetMapping("/qc/return-challans/{id:[0-9]+}")
+    public String qcReturnChallanDetail() { return "forward:/index.html"; }
 }

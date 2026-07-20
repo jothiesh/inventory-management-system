@@ -46,7 +46,8 @@ public class Product {
 
     @Column(name = "manufacturer_pn", length = 100)
     private String manufacturerPn;
-
+    @Column(name = "make", length = 150)
+    private String make;
     @Column(name = "unit_price", precision = 10, scale = 2)
     private BigDecimal unitPrice;
 
