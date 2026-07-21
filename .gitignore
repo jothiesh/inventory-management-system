@@ -30,3 +30,9 @@ target/
 *.iml
 .project
 .classpath
+node_modules/
+target/
+build/
+dist/
+.env
+*.log
