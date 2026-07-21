@@ -49,6 +49,7 @@ public class QcInspectionService {
 	private final UserRepository userRepo;
 
 	private final QcStockBridge stockBridge;
+	private final QcFilledChecklistService filledChecklistService;   // ★ persists the filled checklist
 	private final QcTemplateService templateService;
 	private final QcChecklistPdfGenerator pdfGenerator;
 
@@ -171,7 +172,14 @@ public class QcInspectionService {
 
 		User actor = currentUser();
 		QcInspection inspection = createInspectionRow(batch, lots.size(), decision.name(), req.getOverallRemarks(),
-				actor, req.getTemplateCode());
+				actor, req.getTemplateCode(), req.getInspectorName());
+
+		// ★ THE FIX: link the filled checklist (draft saved on Download, plus any
+		//   fresh results in this submit) to the new inspection. Without this the
+		//   draft keeps inspection_id = NULL forever, so reopening from Approved
+		//   finds nothing and shows a blank form. Never throws — see the service.
+		filledChecklistService.attachToInspection(inspection, batch.getId(),
+				req.getTemplateCode(), req.getChecklistResults());
 
 		BigDecimal totalAcc = BigDecimal.ZERO, totalRej = BigDecimal.ZERO, totalHold = BigDecimal.ZERO;
 
@@ -283,7 +291,7 @@ public class QcInspectionService {
 
 		User actor = currentUser();
 		QcInspection inspection = createInspectionRow(batch, req.getItems().size(), "PARTIAL", req.getOverallRemarks(),
-				actor, req.getTemplateCode());
+				actor, req.getTemplateCode(), req.getInspectorName());
 
 		BigDecimal totalAcc = BigDecimal.ZERO, totalRej = BigDecimal.ZERO, totalHold = BigDecimal.ZERO;
 		boolean anyAccepted = false, anyRejected = false, anyHeld = false;
@@ -334,6 +342,10 @@ public class QcInspectionService {
 
 		inspection.setOverallDecision(overall.name());
 		inspectionRepo.save(inspection);
+
+		// ★ same link for per-item submissions
+		filledChecklistService.attachToInspection(inspection, batch.getId(),
+				req.getTemplateCode(), req.getChecklistResults());
 
 		QcStatus newStatus;
 		if (remaining > 0) {
@@ -422,6 +434,12 @@ public class QcInspectionService {
 
 	private QcInspection createInspectionRow(StockInBatch batch, int lotCount, String overallDecision, String remarks,
 			User actor, String templateCode) {
+		return createInspectionRow(batch, lotCount, overallDecision, remarks, actor, templateCode, null);
+	}
+
+	// ★ overload that also stores the typed inspector name (e.g. "sowmyashree")
+	private QcInspection createInspectionRow(StockInBatch batch, int lotCount, String overallDecision, String remarks,
+			User actor, String templateCode, String inspectorName) {
 		QcInspection insp = new QcInspection();
 		insp.setBatch(batch);
 		insp.setInvoiceNo(batch.getInvoiceNo());
@@ -431,6 +449,8 @@ public class QcInspectionService {
 		insp.setOverallDecision(overallDecision);
 		insp.setOverallRemarks(remarks);
 		insp.setInspectedBy(actor);
+		if (inspectorName != null && !inspectorName.isBlank())
+			insp.setInspectorName(inspectorName.trim());
 		insp.setInspectedAt(LocalDateTime.now());
 		if (templateCode != null && !templateCode.isBlank()) {
 			insp.setTemplateCode(templateCode.toUpperCase().trim());

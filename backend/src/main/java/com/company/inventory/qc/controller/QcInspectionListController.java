@@ -24,12 +24,15 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * QC Inspection Listing — roles: OWNER · QC
+ * QC Inspection Listing — roles: OWNER · STORE_MANAGER · QC
  *
  * Bug fixes:
  *  ★ PARTIAL inspection qtyAccepted=0 → uses lot.getQcQtyAccepted() (correct field)
  *  ★ /rejected returns REJECTED + PARTIAL both
  *  ★ DC status from StockInBatch.getDc() (DeliveryReturnChallan entity)
+ *  ★ inspectorName now prefers the TYPED name (i.getInspectorName()), falling
+ *    back to the logged-in User only for older rows. Applies to approved,
+ *    rejected and history because they all share toMap().
  */
 @Slf4j
 @RestController
@@ -100,20 +103,31 @@ public class QcInspectionListController {
         m.put("pdfPath",         i.getPdfPath());
         m.put("formNo",          i.getFormNo());
         m.put("createdAt",       i.getCreatedAt());
+        m.put("templateCode",    i.getTemplateCode());
 
         // ── Inspector name ────────────────────────────────────
-        if (i.getInspectedBy() != null) {
+        // ★ FIX: prefer the name the inspector TYPED on the form
+        //   (i.getInspectorName(), e.g. "sowmyashree"). Only fall back to the
+        //   logged-in User's full name / username for older rows that never
+        //   saved a typed name. This method previously ONLY used getInspectedBy(),
+        //   ignoring the typed name entirely — which is why the screen showed the
+        //   login name / "QC Inspector" instead of what was entered.
+        String typedName = i.getInspectorName();
+        if (typedName != null && !typedName.isBlank()) {
+            m.put("inspectorName", typedName.trim());
+        } else if (i.getInspectedBy() != null) {
             String name = i.getInspectedBy().getUsername();
             try {
                 String full = i.getInspectedBy().getFullName();
                 if (full != null && !full.isBlank()) name = full;
             } catch (Exception ignored) {}
-            m.put("inspectorName",     name);
-            m.put("inspectorUsername", i.getInspectedBy().getUsername());
+            m.put("inspectorName", name);
         } else {
-            m.put("inspectorName",     null);
-            m.put("inspectorUsername", null);
+            m.put("inspectorName", null);
         }
+        // keep the raw login username available separately
+        m.put("inspectorUsername",
+                i.getInspectedBy() != null ? i.getInspectedBy().getUsername() : null);
 
         // ── Batch resolution ──────────────────────────────────
         StockInBatch b = null;

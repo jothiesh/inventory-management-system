@@ -21,6 +21,11 @@ public class PerItemQcDecisionRequest {
     /** Template code selected by inspector */
     private String templateCode;
 
+    /** ★ The name the inspector typed on the form (e.g. "sowmyashree").
+     *  Stored on the inspection so the reopened checklist shows the real
+     *  name instead of the generic "QC Inspector" fallback. */
+    private String inspectorName;
+
     private String overallRemarks;
 
     private List<ItemDecision> items;

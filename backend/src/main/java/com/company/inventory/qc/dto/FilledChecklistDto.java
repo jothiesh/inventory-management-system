@@ -24,6 +24,7 @@ public class FilledChecklistDto {
 
     private Long   id;
     private Long   inspectionId;   // null while still a draft
+    private String inspectorName;  // ★ the name the inspector typed, for the reopen view
     private Long   batchId;
     private String templateCode;
     private String categoryName;

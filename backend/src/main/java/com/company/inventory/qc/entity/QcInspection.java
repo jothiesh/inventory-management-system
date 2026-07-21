@@ -66,6 +66,12 @@ public class QcInspection {
     @Column(name = "template_code", length = 50)
     private String templateCode;
 
+    /** ★ The name the inspector typed on the form (e.g. "sowmyashree").
+     *  Distinct from inspectedBy (the logged-in User). Nullable — older
+     *  rows won't have it, and the reopen falls back to inspectedBy then. */
+    @Column(name = "inspector_name", length = 120)
+    private String inspectorName;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

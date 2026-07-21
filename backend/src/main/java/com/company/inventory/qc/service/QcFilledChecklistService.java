@@ -261,6 +261,7 @@ public class QcFilledChecklistService {
         return FilledChecklistDto.builder()
                 .id(c.getId())
                 .inspectionId(c.getInspection() != null ? c.getInspection().getId() : null)
+                .inspectorName(c.getInspection() != null ? c.getInspection().getInspectorName() : null)
                 .batchId(c.getBatchId())
                 .templateCode(c.getCategoryCode())
                 .categoryName(t != null ? t.getCategoryName() : null)

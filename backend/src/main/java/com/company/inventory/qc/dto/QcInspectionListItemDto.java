@@ -18,10 +18,10 @@ public class QcInspectionListItemDto {
     private String categoryCode;
     private String supplierName;
     private String invoiceNumber;
-
+    private String remarks;
     // Decision data
     private String overallDecision;   // ACCEPTED | REJECTED | PARTIAL | HOLD
-    private String remarks;
+//    private String remarks;
     private String inspectorName;
 
     // Quantity summary

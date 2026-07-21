@@ -24,7 +24,7 @@ public class BulkQcDecisionRequest {
     private QcDecision decision;
 
     private String overallRemarks;
-
+    private String inspectorName;   // ★ ADD THIS
     /**
      * ★ NEW — the filled checklist rows.
      *
@@ -37,7 +37,7 @@ public class BulkQcDecisionRequest {
      * Read by QcInspectionService -> QcFilledChecklistService.attachToInspection().
      */
     private List<ChecklistResultDto> checklistResults;
-
+//
     /**
      * ⚠ DEAD FIELD — kept only so existing callers don't break on an unknown
      * property. Nothing reads getChecklists(): QcInspectionService never calls

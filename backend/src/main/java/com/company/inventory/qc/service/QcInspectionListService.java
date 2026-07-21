@@ -88,16 +88,20 @@ public class QcInspectionListService {
 
     private QcInspectionListItemDto toDto(QcInspection ins) {
 
-        // ✅ FIX 1: Direct field access — no reflection needed
         Long inspectionId = ins.getId();
 
-        // ✅ FIX 2: Get batchId from the ManyToOne relationship directly
         Long batchId = ins.getBatch() != null ? ins.getBatch().getId() : null;
         StockInBatch batch = ins.getBatch();
 
-        // ✅ FIX 3: Get inspector name from User object, not a String field
-        String inspectorName = ins.getInspectedBy() != null
-                ? ins.getInspectedBy().getUsername() : null;
+        // ★ INSPECTOR NAME — prefer the name the inspector actually typed on
+        //   the form (e.g. "sowmyashree"), stored on the inspection. Fall back
+        //   to the logged-in username only for older rows that never saved a
+        //   typed name. Previously this always used getInspectedBy().getUsername(),
+        //   which is why the reopened checklist showed the login name /
+        //   "QC Inspector" instead of the name that was entered.
+        String inspectorName = (ins.getInspectorName() != null && !ins.getInspectorName().isBlank())
+                ? ins.getInspectorName()
+                : (ins.getInspectedBy() != null ? ins.getInspectedBy().getUsername() : null);
 
         String overallDecision = ins.getOverallDecision();
         String remarks         = ins.getOverallRemarks();
@@ -106,22 +110,12 @@ public class QcInspectionListService {
         LocalDateTime inspectionDate = ins.getCreatedAt();
         LocalDateTime stockInDate    = batch != null ? batch.getCreatedAt() : null;
 
-        // ✅ FIX 4: Use correct field names directly on StockInBatch
         String batchRef      = batch != null ? batch.getBatchRef()    : null;
         String supplierName  = batch != null ? batch.getSupplierName(): null;
-        String invoiceNumber = batch != null ? batch.getInvoiceNo()   : null; // ✅ invoiceNo not invoiceNumber
+        String invoiceNumber = batch != null ? batch.getInvoiceNo()   : null;
 
-        // category — derived from lots if needed, or left null
         String categoryCode = null;
-        try {
-            if (batch != null) {
-                // Try to get from batch lots via bridge if available
-                // For now derive from inspectedAt — kept null, populated by QcInspectionListController
-                categoryCode = null;
-            }
-        } catch (Exception ignored) {}
 
-        // Totals from QcItemDecision rows
         Totals totals = computeTotals(inspectionId);
 
         return QcInspectionListItemDto.builder()
