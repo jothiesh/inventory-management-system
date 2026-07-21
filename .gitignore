@@ -1,27 +1,32 @@
-﻿# Secrets - CRITICAL
-.env
-.env.*
-*.env
-
-# Java / Spring Boot
-target/
-*.jar
-*.class
-
-# Node / React
+﻿# Node
 node_modules/
+frontend/node_modules/
+frontend/dist/
 dist/
-build/
 
-# Large files
+# Junk files
 folder_structure.txt
+Y
+cd
+netstat
+npm
+rmdir
+inventory-management-frontend@1.0.0
+
+# Environment
+.env
+*.env.local
+
+# Java/Spring Boot
+target/
+*.class
+*.jar
+*.war
+*.log
 
 # IDE
 .idea/
 .vscode/
 *.iml
-
-node_modules/
-frontend/node_modules/
-frontend/dist/
-folder_structure.txt
+.project
+.classpath
